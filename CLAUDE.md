@@ -20,7 +20,14 @@ and a hybrid bridge so real devices can join a simulated network. See README.md 
   ESP-NOW come later.
 
 Exists so far: `core/` (frame, node, PAL), `port/udp/` (PC port, peer lists define topology),
-`examples/udp_demo/`, `tests/`, `fuzz/`, `docs/`. Wire format: `docs/frame-format.md`.
+`examples/udp_demo/`, `tests/`, `fuzz/`, `sim/` (ksim simulator), `docs/`.
+Wire format: `docs/frame-format.md`. Simulator: `docs/simulator.md`.
+
+Simulator rules: ksim is **general-purpose** — `ksim_core` must never depend on Kervan core; protocols
+plug in through the C ABI in `sim/include/ksim/stack.h` (`sim/stacks/<name>/`). Results must be
+bit-identical across OSes: no `<random>` distributions, round signal levels before comparing.
+`KervanStack.GoldenLineScenario` pins a trace hash — update it only for intended behaviour changes.
+Unknown scenario keys are errors.
 Ports drive the node from their main loop (`kv_node_on_rx/on_tx_done/tick`, `next_deadline`) and
 never call core from inside a PAL callback or an interrupt.
 
@@ -38,7 +45,7 @@ never call core from inside a PAL callback or an interrupt.
   (GCC/Clang) and `/W4` (MSVC). CI uses warnings-as-errors.
 - Formatting: `.clang-format` (LLVM base, 4 spaces, 100 cols, Linux braces).
 - Tests: Unity framework, one `tests/test_<area>.c` per area, registered via `kervan_add_test()`
-  in `tests/CMakeLists.txt`. Core logic is tested with a mock PAL; `test_udp` uses real sockets.
+  in `tests/CMakeLists.txt`. Simulator (C++20) tests use GoogleTest in `sim/tests/`. Core logic is tested with a mock PAL; `test_udp` uses real sockets.
   Wire-format tests use hand-computed golden byte arrays. Untrusted-input parsers get a fuzz target
   in `fuzz/`. Keep core line coverage near 100% (CI fails below 90%).
 - Wire format must be explicit about byte order (little-endian) and never rely on struct layout/packing.
@@ -57,7 +64,10 @@ Dev container (GCC 13, Clang 18, arm-none-eabi 13, Ninja):
 docker build -t kervan-dev .devcontainer
 docker run --rm -v "<repo>:/workspaces/kervan" kervan-dev bash -c "<commands>"
 ```
-Put build directories in `/tmp` inside the container to keep the host tree clean.
+Put build directories in `/tmp` inside the container to keep the host tree clean, or in a named
+volume (`-v kervan-build:/build`, owned by uid 1000) to keep builds between `docker run`s.
+
+Simulator: `build/sim/ksim run sim/scenarios/line_5.json [--seed N] [--trace out.jsonl]`.
 
 ARM Cortex-M4 cross build of core (also run by CI — check code size here):
 ```sh
@@ -75,14 +85,18 @@ CC=clang cmake -S . -B /tmp/b-fz -DKERVAN_BUILD_FUZZERS=ON -DKERVAN_BUILD_TESTS=
 /tmp/b-fz/fuzz/fuzz_frame -max_total_time=60                # also fuzz_node
 ```
 
-CI (`.github/workflows/ci.yml`): GCC, Clang, MSVC, arm-none-eabi, ASan/UBSan, coverage (≥90% lines),
-60 s fuzzing per target — on every push/PR.
+CI (`.github/workflows/ci.yml`): GCC, Clang (Linux), MSVC (Windows), Apple Clang (macOS),
+arm-none-eabi, ASan/UBSan, coverage (≥90% lines, core + port + sim), 60 s fuzzing per target — on
+every push/PR.
 
 ## Roadmap status
 
 - [x] Phase 0 — repo, CMake, Unity tests, CI, dev container
 - [x] Phase 1 — frame format + PAL; two nodes talk over UDP on a PC
-- [ ] Phase 2 — **discrete-event simulator**, LoRa channel model  ← next
+- [ ] Phase 2 — discrete-event simulator, LoRa channel model  ← in progress
+  - [x] 2a — engine, LoRa channel, C ABI stack adapter, Kervan stack, scenario files, `ksim` CLI
+  - [ ] 2b — 2.4 GHz PHY + nRF24L01 Enhanced ShockBurst model (clean-room from datasheet)
+  - [ ] 2c — out-of-process stacks (lockstep over a socket)
 - [ ] Phase 3 — pub/sub, QoS 1, fragmentation
 - [ ] Phase 4 — multi-hop mesh
 - [ ] Phase 5 — web visualizer

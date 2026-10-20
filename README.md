@@ -74,6 +74,20 @@ build/examples/udp_demo/kervan_udp_demo --addr 2 --port 40002 --peer 40001 --dst
 
 (With MSVC the binary is under `build/examples/udp_demo/Debug/`.)
 
+### Try it: the simulator
+
+`ksim` runs the same Kervan code on virtual nodes over a modelled LoRa channel (path loss, shadowing,
+collisions, airtime) in virtual time — an hour of network traffic takes a fraction of a second, and
+the same seed gives the same result on every OS.
+
+```sh
+build/sim/ksim run sim/scenarios/line_5.json --trace line_5.jsonl
+```
+
+It prints delivery and loss statistics, per-node airtime and duty cycle. See
+[docs/simulator.md](docs/simulator.md) for the channel model and the scenario format. The simulator
+is protocol-agnostic: other stacks plug in through a small C interface.
+
 ### Dev container (recommended)
 
 The repository ships a ready-to-use environment in [`.devcontainer/`](.devcontainer/) with GCC, Clang,

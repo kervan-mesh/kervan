@@ -15,17 +15,25 @@ jobs:
         include:
           - os: ubuntu-latest
             cc: gcc
+            cxx: g++
           - os: ubuntu-latest
             cc: clang
+            cxx: clang++
           - os: windows-latest
             cc: msvc
+          - os: macos-latest
+            cc: clang
+            cxx: clang++
     steps:
       - uses: actions/checkout@v5
 
+      # The simulator's golden-hash test runs here on every OS: same seed, same result everywhere.
       - name: Configure
         shell: bash
         run: |
-          if [ "${{ matrix.cc }}" != "msvc" ]; then export CC=${{ matrix.cc }}; fi
+          if [ "${{ matrix.cc }}" != "msvc" ]; then
+            export CC=${{ matrix.cc }} CXX=${{ matrix.cxx }}
+          fi
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DKERVAN_WARNINGS_AS_ERRORS=ON
 
       - name: Build
@@ -44,6 +52,7 @@ jobs:
       - name: Build and test
         env:
           CC: clang
+          CXX: clang++
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DKERVAN_WARNINGS_AS_ERRORS=ON -DKERVAN_SANITIZE=ON
           cmake --build build
@@ -59,6 +68,7 @@ jobs:
       - name: Build and test
         env:
           CC: gcc
+          CXX: g++
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DKERVAN_COVERAGE=ON
           cmake --build build
@@ -67,9 +77,9 @@ jobs:
         shell: bash # implies pipefail, so `| tee` does not hide a failed threshold
         run: |
           mkdir -p coverage
-          gcovr -r . --filter core/ --filter port/ build --txt-metric branch --html-details coverage/index.html \
+          gcovr -r . --filter core/ --filter port/ --filter sim/src/ --filter sim/stacks/ --exclude sim/src/main.cpp build --txt-metric branch --html-details coverage/index.html \
             --fail-under-line 90 | tee -a "$GITHUB_STEP_SUMMARY"
-          gcovr -r . --filter core/ --filter port/ build | tee -a "$GITHUB_STEP_SUMMARY"
+          gcovr -r . --filter core/ --filter port/ --filter sim/src/ --filter sim/stacks/ --exclude sim/src/main.cpp build | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: coverage-html
@@ -87,7 +97,7 @@ jobs:
           CC: clang
         run: |
           cmake -S . -B build -DKERVAN_BUILD_FUZZERS=ON -DKERVAN_BUILD_TESTS=OFF \
-            -DKERVAN_WARNINGS_AS_ERRORS=ON
+            -DKERVAN_BUILD_SIM=OFF -DKERVAN_WARNINGS_AS_ERRORS=ON
           cmake --build build
       - name: Run
         run: |

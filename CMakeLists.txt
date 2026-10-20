@@ -25,6 +25,14 @@ else()
 endif()
 option(KERVAN_BUILD_PORT_UDP "Build the UDP port (PC)" ${KERVAN_HOSTED})
 option(KERVAN_BUILD_EXAMPLES "Build examples (needs KERVAN_BUILD_PORT_UDP)" ${KERVAN_HOSTED})
+option(KERVAN_BUILD_SIM "Build the ksim simulator (C++20)" ${KERVAN_HOSTED})
+
+if(KERVAN_BUILD_SIM)
+    enable_language(CXX)
+    set(CMAKE_CXX_STANDARD 20)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+    set(CMAKE_CXX_EXTENSIONS OFF)
+endif()
 
 # Instrumentation applies to every target (core, tests, Unity) so reports are consistent.
 if(KERVAN_BUILD_FUZZERS)
@@ -66,6 +74,10 @@ endif()
 if(KERVAN_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+if(KERVAN_BUILD_SIM)
+    add_subdirectory(sim)
 endif()
 
 if(KERVAN_BUILD_FUZZERS)

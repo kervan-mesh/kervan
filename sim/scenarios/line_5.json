@@ -1,0 +1,21 @@
+{
+  "description": "Five nodes in a line, 1 km apart (urban, SF9): only neighbours hear each other. Each node sends to its right neighbour (the last one to its left) every minute with ACK.",
+  "seed": 42,
+  "duration_s": 3600,
+  "mtu": 51,
+  "radio": { "type": "lora", "freq_hz": 868100000, "sf": 9, "bw_hz": 125000, "tx_power_dbm": 14 },
+  "path_loss": { "model": "log_distance", "exponent": 3.5, "shadowing_sigma_db": 4 },
+  "duty_cycle_limit": 0.01,
+  "nodes": [
+    { "id": 1, "pos": [0, 0], "stack": "kervan",
+      "config": { "send_to": 2, "send_every_ms": 60000, "jitter_ms": 5000, "ack": true } },
+    { "id": 2, "pos": [1000, 0], "stack": "kervan",
+      "config": { "send_to": 3, "send_every_ms": 60000, "jitter_ms": 5000, "ack": true } },
+    { "id": 3, "pos": [2000, 0], "stack": "kervan",
+      "config": { "send_to": 4, "send_every_ms": 60000, "jitter_ms": 5000, "ack": true } },
+    { "id": 4, "pos": [3000, 0], "stack": "kervan",
+      "config": { "send_to": 5, "send_every_ms": 60000, "jitter_ms": 5000, "ack": true } },
+    { "id": 5, "pos": [4000, 0], "stack": "kervan",
+      "config": { "send_to": 4, "send_every_ms": 60000, "jitter_ms": 5000, "ack": true } }
+  ]
+}

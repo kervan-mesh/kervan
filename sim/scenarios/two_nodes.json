@@ -1,0 +1,14 @@
+{
+  "description": "Two Kervan nodes 500 m apart exchanging acknowledged messages every 10 s.",
+  "seed": 1,
+  "duration_s": 300,
+  "mtu": 51,
+  "radio": { "type": "lora", "freq_hz": 868100000, "sf": 7, "bw_hz": 125000, "tx_power_dbm": 14 },
+  "path_loss": { "model": "log_distance", "exponent": 2.7 },
+  "nodes": [
+    { "id": 1, "pos": [0, 0], "stack": "kervan",
+      "config": { "send_to": 2, "send_every_ms": 10000, "ack": true } },
+    { "id": 2, "pos": [500, 0], "stack": "kervan",
+      "config": { "send_to": 1, "send_every_ms": 10000, "ack": true } }
+  ]
+}
