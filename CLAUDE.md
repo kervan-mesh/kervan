@@ -21,7 +21,8 @@ and a hybrid bridge so real devices can join a simulated network. See README.md 
 
 Exists so far: `core/` (frame, node, PAL), `port/udp/` (PC port, peer lists define topology),
 `examples/udp_demo/`, `tests/`, `fuzz/`, `sim/` (ksim simulator), `docs/`.
-Wire format: `docs/frame-format.md`. Simulator: `docs/simulator.md`.
+Wire format: `docs/frame-format.md`. Simulator: `docs/simulator.md`. Out-of-process stacks:
+`docs/remote-protocol.md` (`sim/remote/`: C client, Python client, `ksim-node`).
 
 Simulator rules: ksim is **general-purpose** — `ksim_core` must never depend on Kervan core; protocols
 plug in through the C ABI in `sim/include/ksim/stack.h` (`sim/stacks/<name>/`). Results must be
@@ -97,12 +98,13 @@ every push/PR.
 
 - [x] Phase 0 — repo, CMake, Unity tests, CI, dev container
 - [x] Phase 1 — frame format + PAL; two nodes talk over UDP on a PC
-- [ ] Phase 2 — discrete-event simulator, LoRa channel model  ← in progress
+- [x] Phase 2 — discrete-event simulator (ksim), LoRa channel model
   - [x] 2a — engine, LoRa channel, C ABI stack adapter, Kervan stack, scenario files, `ksim` CLI
   - [x] 2b — PHY abstraction, nRF24 PHY + Enhanced ShockBurst stack, device profiles, ABI v2
     (radio control), versioned models
-  - [ ] 2c — out-of-process stacks (lockstep over a socket)
-- [ ] Phase 3 — pub/sub, QoS 1, fragmentation
+  - [x] 2c — out-of-process stacks: remote protocol v1, C + Python clients, ksim-node, spawn/wait
+- [ ] Phase 3 — **pub/sub, QoS 1, fragmentation** ← next (also: duty-cycle budget / retry backoff,
+  found by the simulator)
 - [ ] Phase 4 — multi-hop mesh
 - [ ] Phase 5 — web UI: scenario editor (pick device/board, protocol, radio, traffic; drag nodes on a
   map) + live visualizer (packet animation, charts), served locally by `ksim serve`. Writes the same

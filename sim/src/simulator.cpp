@@ -15,6 +15,7 @@
 #include <nlohmann/json.hpp>
 
 #include "ksim/rng.hpp"
+#include "remote/remote.hpp"
 
 namespace ksim {
 
@@ -51,6 +52,9 @@ struct Simulator::Impl {
         Time rx_off_at = 0; // when the receiver was last switched off
         ksim_host_t host{};
         const ksim_stack_t *stack = nullptr;
+        RemoteNode *remote = nullptr; // set for out-of-process nodes
+        std::string stack_name;
+        std::string stack_version;
         void *inst = nullptr;
         Rng rng{0, 0};
         std::map<uint32_t, uint64_t> timers; // timer id -> generation of the live expiry
@@ -80,6 +84,13 @@ struct Simulator::Impl {
     Summary sum;
     uint64_t hash = 0xCBF29CE484222325ull;
     bool ran = false;
+
+    // out-of-process nodes
+    uint16_t remote_port = 0;
+    std::string program_dir;
+    std::function<void(uint32_t, uint16_t)> on_wait;
+    std::unique_ptr<RemoteHub> hub;
+    std::map<uint32_t, std::unique_ptr<RemoteNode>> remotes;
 
     void emit(const nlohmann::ordered_json &line)
     {
@@ -307,7 +318,7 @@ struct Simulator::Impl {
         for (const auto &n : nodes) {
             const Phy &phy = phy_for(n->radio.type);
             p[phy.name()] = std::to_string(phy.version());
-            s[n->stack->name] = n->stack->version != nullptr ? n->stack->version : "";
+            s[n->stack_name] = n->stack_version;
             if (n->spec.device) {
                 d[n->spec.device->name] = std::to_string(n->spec.device->version);
             }
@@ -397,6 +408,9 @@ Simulator::Simulator(Scenario scenario) : impl_(std::make_unique<Impl>())
         if (!err.empty()) {
             throw std::invalid_argument(where + err);
         }
+        if (spec.process && spec.process->spawn.empty() == !spec.process->wait) {
+            throw std::invalid_argument(where + "process needs either spawn or wait");
+        }
     }
     if (scenario.mtu == 0 || scenario.mtu > 255) {
         throw std::invalid_argument("mtu must be 1..255");
@@ -428,6 +442,14 @@ void Simulator::set_trace(std::ostream *out)
     impl_->trace_out = out;
 }
 
+void Simulator::set_remote_options(uint16_t port, std::string program_dir,
+                                   std::function<void(uint32_t, uint16_t)> on_wait)
+{
+    impl_->remote_port = port;
+    impl_->program_dir = std::move(program_dir);
+    impl_->on_wait = std::move(on_wait);
+}
+
 Summary Simulator::run()
 {
     Impl &s = *impl_;
@@ -437,17 +459,25 @@ Summary Simulator::run()
     s.ran = true;
 
     // Build every node first so a stack may transmit from create().
+    std::vector<const NodeSpec *> remote_specs;
     for (const NodeSpec &spec : s.scn.nodes) {
-        auto it = s.stacks.find(spec.stack);
-        if (it == s.stacks.end()) {
-            throw std::runtime_error("node " + std::to_string(spec.id) + ": unknown stack '" +
-                                     spec.stack + "'");
-        }
         auto n = std::make_unique<Impl::Node>();
+        if (spec.process) {
+            n->stack = RemoteNode::vtable(); // name and version come from the process's HELLO
+            remote_specs.push_back(&spec);
+        } else {
+            auto it = s.stacks.find(spec.stack);
+            if (it == s.stacks.end()) {
+                throw std::runtime_error("node " + std::to_string(spec.id) + ": unknown stack '" +
+                                         spec.stack + "'");
+            }
+            n->stack = it->second;
+            n->stack_name = n->stack->name;
+            n->stack_version = n->stack->version != nullptr ? n->stack->version : "";
+        }
         n->sim = &s;
         n->spec = spec;
         n->radio = spec.radio;
-        n->stack = it->second;
         n->rng = Rng(s.scn.seed, mix(kTagNode, spec.id));
         n->stats.id = spec.id;
         n->host.ctx = n.get();
@@ -464,22 +494,52 @@ Summary Simulator::run()
         s.index_of[spec.id] = s.nodes.size();
         s.nodes.push_back(std::move(n));
     }
-    s.emit_meta();
-    for (auto &n : s.nodes) {
-        n->inst = n->stack->create(&n->host, n->spec.config.c_str());
-        if (n->inst == nullptr) {
-            throw std::runtime_error("node " + std::to_string(n->spec.id) + ": stack '" +
-                                     n->spec.stack + "' rejected config '" + n->spec.config +
-                                     "'");
+
+    if (!remote_specs.empty()) {
+        s.hub = std::make_unique<RemoteHub>(s.remote_port, s.program_dir);
+        s.remotes = s.hub->connect(remote_specs, s.on_wait);
+        for (auto &n : s.nodes) {
+            if (n->spec.process) {
+                n->remote = s.remotes.at(n->spec.id).get();
+                n->stack_name = n->remote->stack_name();
+                n->stack_version = n->remote->stack_version();
+            }
         }
     }
+    s.emit_meta();
 
-    s.queue.run_until(s.scn.duration_us);
+    try {
+        for (auto &n : s.nodes) {
+            if (n->remote != nullptr) {
+                n->inst = n->remote->create(&n->host, s.queue.now(), n->spec.config) ? n->remote
+                                                                                       : nullptr;
+            } else {
+                n->inst = n->stack->create(&n->host, n->spec.config.c_str());
+            }
+            if (n->inst == nullptr) {
+                throw std::runtime_error("node " + std::to_string(n->spec.id) + ": stack '" +
+                                         n->spec.stack + "' rejected config '" + n->spec.config +
+                                         "'");
+            }
+        }
 
-    for (auto &n : s.nodes) {
-        n->stack->destroy(n->inst);
-        n->inst = nullptr;
-        s.sum.nodes.push_back(n->stats);
+        s.queue.run_until(s.scn.duration_us);
+
+        for (auto &n : s.nodes) {
+            n->stack->destroy(n->inst);
+            n->inst = nullptr;
+            s.sum.nodes.push_back(n->stats);
+        }
+    } catch (...) {
+        // free what was created; failed processes are killed with their connections
+        for (auto &n : s.nodes) {
+            if (n->inst != nullptr && n->remote == nullptr) {
+                n->stack->destroy(n->inst);
+            }
+            n->inst = nullptr;
+        }
+        s.remotes.clear();
+        throw;
     }
     s.sum.duration_us = s.scn.duration_us;
     s.sum.trace_hash = s.hash;

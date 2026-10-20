@@ -6,10 +6,13 @@
 #include "ksim/scenario.hpp"
 
 #include <cmath>
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 
 #include "json_util.hpp"
 
@@ -89,10 +92,82 @@ void parse_path_loss(const json &pl, PathLoss &out)
     }
 }
 
-NodeSpec parse_node(const json &jn, const Scenario &s, const DeviceRegistry &devices,
-                    const std::string &where)
+std::string env_var(const char *name)
 {
-    check_object(jn, {"id", "pos", "device", "stack", "config", "radio"}, where);
+#if defined(_MSC_VER)
+    char *buf = nullptr;
+    size_t len = 0;
+    if (_dupenv_s(&buf, &len, name) != 0 || buf == nullptr) {
+        return {};
+    }
+    std::string value(buf);
+    std::free(buf);
+    return value;
+#else
+    const char *value = std::getenv(name);
+    return value != nullptr ? value : "";
+#endif
+}
+
+// The interpreter for "${python}": KSIM_PYTHON if set, else the usual name on this platform.
+std::string python_interpreter()
+{
+    const std::string env = env_var("KSIM_PYTHON");
+    if (!env.empty()) {
+        return env;
+    }
+#if defined(_WIN32)
+    return "python"; // "python3" is often only the Microsoft Store stub on Windows
+#else
+    return "python3";
+#endif
+}
+
+// Replace ${scenario_dir} and ${python} so scenario files work on every OS and from any directory.
+std::string expand(std::string arg, const std::string &scenario_dir)
+{
+    const std::pair<std::string, std::string> vars[] = {{"${scenario_dir}", scenario_dir},
+                                                        {"${python}", python_interpreter()}};
+    for (const auto &[name, value] : vars) {
+        for (size_t pos = arg.find(name); pos != std::string::npos;
+             pos = arg.find(name, pos + value.size())) {
+            arg.replace(pos, name.size(), value);
+        }
+    }
+    return arg;
+}
+
+ProcessSpec parse_process(const json &jp, const std::string &where, const std::string &dir)
+{
+    check_object(jp, {"spawn", "wait", "timeout_s"}, where);
+    ProcessSpec ps;
+    if (jp.contains("spawn")) {
+        const json &argv = jp.at("spawn");
+        if (!argv.is_array() || argv.empty()) {
+            fail(where + ".spawn", "must be a non-empty array of strings");
+        }
+        for (const json &arg : argv) {
+            if (!arg.is_string()) {
+                fail(where + ".spawn", "must be a non-empty array of strings");
+            }
+            ps.spawn.push_back(expand(arg.get<std::string>(), dir));
+        }
+    }
+    ps.wait = get_bool(jp, "wait", false, where);
+    ps.timeout_s = get_double(jp, "timeout_s", 0.0, where);
+    if (ps.timeout_s < 0.0) {
+        fail(where + ".timeout_s", "must be >= 0");
+    }
+    if (ps.spawn.empty() == !ps.wait) {
+        fail(where, "needs either \"spawn\": [...] or \"wait\": true");
+    }
+    return ps;
+}
+
+NodeSpec parse_node(const json &jn, const Scenario &s, const DeviceRegistry &devices,
+                    const std::string &where, const std::string &dir)
+{
+    check_object(jn, {"id", "pos", "device", "stack", "config", "radio", "process"}, where);
     if (!jn.contains("id") || !jn.contains("pos") || !jn.contains("stack")) {
         fail(where, "needs \"id\", \"pos\" and \"stack\"");
     }
@@ -128,12 +203,13 @@ NodeSpec parse_node(const json &jn, const Scenario &s, const DeviceRegistry &dev
     if (jn.contains("config")) {
         n.config = config_string(jn.at("config"), where + ".config");
     }
+    if (jn.contains("process")) {
+        n.process = parse_process(jn.at("process"), where + ".process", dir);
+    }
     return n;
 }
 
-} // namespace
-
-Scenario parse_scenario(const std::string &json_text, const DeviceRegistry &devices)
+Scenario parse(const std::string &json_text, const DeviceRegistry &devices, const std::string &dir)
 {
     json root;
     try {
@@ -171,7 +247,7 @@ Scenario parse_scenario(const std::string &json_text, const DeviceRegistry &devi
     }
     for (size_t i = 0; i < root.at("nodes").size(); i++) {
         const std::string where = "scenario.nodes[" + std::to_string(i) + "]";
-        NodeSpec n = parse_node(root.at("nodes")[i], s, devices, where);
+        NodeSpec n = parse_node(root.at("nodes")[i], s, devices, where, dir);
         for (const NodeSpec &other : s.nodes) {
             if (other.id == n.id) {
                 fail(where + ".id", "duplicate id " + std::to_string(n.id));
@@ -180,6 +256,13 @@ Scenario parse_scenario(const std::string &json_text, const DeviceRegistry &devi
         s.nodes.push_back(std::move(n));
     }
     return s;
+}
+
+} // namespace
+
+Scenario parse_scenario(const std::string &json_text, const DeviceRegistry &devices)
+{
+    return parse(json_text, devices, ".");
 }
 
 Scenario parse_scenario(const std::string &json_text)
@@ -196,7 +279,8 @@ Scenario load_scenario_file(const std::string &path, const DeviceRegistry &devic
     std::ostringstream text;
     text << in.rdbuf();
     try {
-        return parse_scenario(text.str(), devices);
+        const std::string dir = std::filesystem::path(path).parent_path().string();
+        return parse(text.str(), devices, dir.empty() ? "." : dir);
     } catch (const std::runtime_error &e) {
         throw std::runtime_error(path + ": " + e.what());
     }

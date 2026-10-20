@@ -43,7 +43,7 @@ Going "live" means writing a port — the protocol code does not change.
 |---|---|
 | 0 | Repository, build system, tests, CI ✅ |
 | 1 | Frame format + PAL; two nodes talk over UDP on a PC ✅ |
-| 2 | Discrete-event simulator with a LoRa channel model |
+| 2 | Discrete-event simulator: LoRa + nRF24L01+ radios, device profiles, stacks in any language ✅ |
 | 3 | Pub/sub, QoS 1, fragmentation |
 | 4 | Multi-hop mesh |
 | 5 | Web UI: build scenarios visually (boards, protocols, radios, traffic) and watch them run |
@@ -89,7 +89,8 @@ It prints delivery and loss statistics, per-node airtime and duty cycle. See
 
 The simulator is protocol-agnostic and modular: radios (LoRa, nRF24L01+), protocol stacks (Kervan,
 nRF24 Enhanced ShockBurst) and boards (`ksim devices`) are separate, versioned building blocks.
-New boards are plain JSON files; new stacks plug in through a small C interface.
+New boards are plain JSON files; new stacks plug in through a small C interface, or run as a
+separate process in any language (C and Python clients included) with exactly the same results.
 
 ### Dev container (recommended)
 

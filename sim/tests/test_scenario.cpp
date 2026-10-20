@@ -94,7 +94,8 @@ TEST(Scenario, ErrorsPointAtTheProblem)
 
 TEST(Scenario, ShippedScenariosParse)
 {
-    for (const char *name : {"two_nodes.json", "line_5.json", "star_collisions.json", "nrf24_star.json"}) {
+    for (const char *name : {"two_nodes.json", "line_5.json", "star_collisions.json", "nrf24_star.json",
+                             "remote_mixed.json"}) {
         SCOPED_TRACE(name);
         EXPECT_NO_THROW(ksim::load_scenario_file(std::string(KSIM_SCENARIO_DIR) + "/" + name));
     }
@@ -141,4 +142,42 @@ TEST(Scenario, RadioTypesAndDeviceErrors)
                  "not a lora setting");
     expect_error(R"({"radio": {"type": "nrf24", "channel": 126}, "nodes": []})",
                  "channel must be 0..125");
+}
+
+TEST(Scenario, ProcessSpec)
+{
+    const ksim::Scenario s = parse_scenario(R"({"nodes": [
+        {"id": 1, "pos": [0, 0], "stack": "kervan",
+         "process": {"spawn": ["ksim-node", "--stack", "kervan"], "timeout_s": 3}},
+        {"id": 2, "pos": [0, 0], "stack": "kervan", "process": {"wait": true}},
+        {"id": 3, "pos": [0, 0], "stack": "kervan"}]})");
+    ASSERT_TRUE(s.nodes[0].process.has_value());
+    EXPECT_EQ(s.nodes[0].process->spawn,
+              (std::vector<std::string>{"ksim-node", "--stack", "kervan"}));
+    EXPECT_DOUBLE_EQ(s.nodes[0].process->timeout_s, 3.0);
+    EXPECT_TRUE(s.nodes[1].process->wait);
+    EXPECT_FALSE(s.nodes[2].process.has_value());
+
+    const std::string node = R"({"id": 1, "pos": [0, 0], "stack": "kervan", "process": )";
+    expect_error(R"({"nodes": [)" + node + R"({}}]})", "needs either");
+    expect_error(R"({"nodes": [)" + node + R"({"spawn": ["a"], "wait": true}}]})", "needs either");
+    expect_error(R"({"nodes": [)" + node + R"({"spawn": []}}]})", "non-empty array");
+    expect_error(R"({"nodes": [)" + node + R"({"spawn": [1]}}]})", "non-empty array");
+    expect_error(R"({"nodes": [)" + node + R"({"wait": true, "timeout_s": -1}}]})", "timeout_s");
+    expect_error(R"({"nodes": [)" + node + R"({"wait": true, "port": 5}}]})", "unknown key 'port'");
+}
+
+TEST(Scenario, SpawnPlaceholders)
+{
+    const ksim::Scenario s = ksim::load_scenario_file(std::string(KSIM_SCENARIO_DIR) +
+                                                      "/remote_mixed.json");
+    const std::vector<std::string> &argv = s.nodes[2].process->spawn;
+    ASSERT_EQ(argv.size(), 2u);
+    EXPECT_EQ(argv[0].find("${"), std::string::npos);
+    EXPECT_FALSE(argv[0].empty()); // KSIM_PYTHON, python or python3
+    EXPECT_EQ(argv[1], std::string(KSIM_SCENARIO_DIR) + "/../remote/python/examples/beacon.py");
+
+    const ksim::Scenario t = parse_scenario(R"({"nodes": [{"id": 1, "pos": [0, 0],
+        "stack": "x", "process": {"spawn": ["a", "${scenario_dir}/b${scenario_dir}"]}}]})");
+    EXPECT_EQ(t.nodes[0].process->spawn[1], "./b."); // parse_scenario: the current directory
 }

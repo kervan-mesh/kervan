@@ -16,14 +16,25 @@ add_executable(ksim_tests
     test_kervan_stack.cpp
     test_lora.cpp
     test_nrf24.cpp
+    test_remote.cpp
     test_rng.cpp
     test_scenario.cpp
     test_sim.cpp
 )
+find_package(Threads REQUIRED)
+find_package(Python3 COMPONENTS Interpreter QUIET)
+
 target_link_libraries(ksim_tests PRIVATE ksim_core ksim_stack_kervan ksim_stack_nrf24_esb
-    nlohmann_json::nlohmann_json GTest::gtest_main kervan_warnings)
+    ksim_remote_client nlohmann_json::nlohmann_json GTest::gtest_main Threads::Threads
+    kervan_warnings)
 target_compile_definitions(ksim_tests PRIVATE
-    KSIM_SCENARIO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../scenarios")
+    KSIM_SCENARIO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../scenarios"
+    KSIM_PY_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../remote/python"
+    KSIM_NODE_EXE="$<TARGET_FILE:ksim-node>")
+if(Python3_Interpreter_FOUND)
+    target_compile_definitions(ksim_tests PRIVATE KSIM_PYTHON="${Python3_EXECUTABLE}")
+endif()
+add_dependencies(ksim_tests ksim-node)
 
 include(GoogleTest)
 gtest_discover_tests(ksim_tests DISCOVERY_TIMEOUT 60)

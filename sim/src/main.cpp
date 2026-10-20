@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <exception>
+#include <filesystem>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -23,12 +24,15 @@ namespace {
 
 const ksim_stack_t *builtin_stacks[] = {ksim_stack_kervan(), ksim_stack_nrf24_esb()};
 
+std::string program_dir; // where ksim lives; ksim-node is looked up here first
+
 int usage()
 {
     std::fprintf(stderr,
                  "usage:\n"
                  "  ksim run <scenario.json> [--seed N] [--duration SECONDS] [--trace FILE]\n"
-                 "                           [--devices DIR]\n"
+                 "                           [--devices DIR] [--port P]\n"
+                 "      --port P   TCP port for out-of-process nodes (default: any free port)\n"
                  "  ksim stacks                     list protocol stacks\n"
                  "  ksim devices [--devices DIR]    list device profiles\n"
                  "  ksim version\n");
@@ -104,6 +108,7 @@ int run(std::vector<std::string> args)
     }
     ksim::Scenario scn = ksim::load_scenario_file(args[0], devices);
     std::string trace_path;
+    uint16_t port = 0;
     for (size_t i = 1; i < args.size(); i += 2) {
         if (i + 1 >= args.size()) {
             return usage();
@@ -116,12 +121,20 @@ int run(std::vector<std::string> args)
             scn.duration_us = static_cast<ksim::Time>(std::strtod(val.c_str(), nullptr) * 1e6);
         } else if (key == "--trace") {
             trace_path = val;
+        } else if (key == "--port") {
+            port = static_cast<uint16_t>(std::strtoul(val.c_str(), nullptr, 10));
         } else {
             return usage();
         }
     }
 
     ksim::Simulator sim(scn);
+    sim.set_remote_options(port, program_dir, [](uint32_t node, uint16_t listen_port) {
+        std::printf("node %u waits for its stack process: start it with KSIM_PORT=%u "
+                    "KSIM_NODE_ID=%u (e.g. in a debugger). Virtual time is paused.\n",
+                    node, unsigned{listen_port}, node);
+        std::fflush(stdout);
+    });
     for (const ksim_stack_t *stack : builtin_stacks) {
         sim.register_stack(stack);
     }
@@ -153,6 +166,10 @@ int list_devices(std::vector<std::string> args)
 
 int main(int argc, char **argv)
 {
+    if (argc > 0) {
+        std::error_code ec;
+        program_dir = std::filesystem::absolute(argv[0], ec).parent_path().string();
+    }
     std::vector<std::string> args(argv + 1, argv + argc);
     if (args.empty()) {
         return usage();

@@ -18,3 +18,7 @@ CLAUDE.local.md
 
 # simulator traces
 *.jsonl
+
+# Python
+__pycache__/
+*.pyc

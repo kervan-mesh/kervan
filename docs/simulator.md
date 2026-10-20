@@ -1,7 +1,7 @@
 # ksim — the Kervan simulator
 
-Status: **phase 2b** — engine, LoRa and nRF24 PHYs, device profiles, Kervan and nRF24 ESB stacks,
-CLI.
+Status: **phase 2 complete** — engine, LoRa and nRF24 PHYs, device profiles, Kervan and nRF24 ESB
+stacks, out-of-process stacks (any language), CLI.
 
 ksim is a general-purpose discrete-event simulator for low-power wireless networks. Kervan is one
 protocol it can run; other stacks plug into the same interface. The simulator itself never depends
@@ -29,6 +29,7 @@ carry a version that is recorded in every trace.
 
 ```sh
 ksim run sim/scenarios/line_5.json [--seed N] [--duration S] [--trace out.jsonl] [--devices DIR]
+                                    [--port P]
 ksim stacks                  # protocol stacks and their versions
 ksim devices [--devices DIR] # device profiles
 ksim version
@@ -128,6 +129,36 @@ Declared in [`sim/include/ksim/stack.h`](../sim/include/ksim/stack.h). A stack p
 - Stacks are never called back synchronously from a host function: `on_tx_done` and `on_timer`
   always arrive as separate events.
 
+## Out-of-process stacks
+
+A node can run its stack in a separate process — another language, firmware with globals, code
+under another license, or a node you step through in a debugger. ksim talks to it over TCP on
+127.0.0.1 in lockstep, so the trace is **identical** to running the same stack in process (CI
+checks this for the Kervan and nRF24 stacks). Protocol and client libraries:
+[remote-protocol.md](remote-protocol.md).
+
+```json
+{ "id": 2, "pos": [400, 0], "stack": "kervan",
+  "process": { "spawn": ["ksim-node", "--stack", "kervan"] } }
+
+{ "id": 3, "pos": [200, 150], "stack": "py-beacon",
+  "process": { "spawn": ["${python}", "${scenario_dir}/../remote/python/examples/beacon.py"] } }
+
+{ "id": 4, "pos": [0, 0], "stack": "kervan", "process": { "wait": true } }
+```
+
+- `spawn`: ksim starts the command. A bare program name is looked up next to `ksim` first.
+  `${python}` becomes `KSIM_PYTHON` if set, else `python` (Windows) or `python3`;
+  `${scenario_dir}` is the directory of the scenario file.
+- `wait`: ksim prints the port and waits until you start the process yourself (for example in a
+  debugger) with `KSIM_PORT` and `KSIM_NODE_ID` set. Virtual time stands still meanwhile.
+- `timeout_s`: per answer (default 10 s for `spawn`, unlimited for `wait`). A process that dies,
+  hangs or breaks the protocol stops the run with an error naming the node.
+- `--port P` fixes the listening port (default: any free port).
+
+Example: [`sim/scenarios/remote_mixed.json`](../sim/scenarios/remote_mixed.json) — Kervan in and
+out of process plus Python beacons on one LoRa channel.
+
 ## Scenario file (JSON)
 
 ```json
@@ -196,7 +227,8 @@ Loss reasons: `collision`, `half_duplex`, `rx_off`.
 | Add | Where | Code? |
 |---|---|---|
 | A board | `sim/devices/<name>.json` or a `--devices` directory | no |
-| A protocol stack | `sim/stacks/<name>/`, implement `ksim_stack_t`, register in `sim/src/main.cpp` | C (or anything with a C ABI) |
+| A protocol stack (built in) | `sim/stacks/<name>/`, implement `ksim_stack_t`, register in `sim/src/main.cpp` | C (or anything with a C ABI) |
+| A protocol stack (separate process) | anywhere; C: `ksim_remote_serve_env(stack)`, Python: subclass `ksim_remote.Stack` | any language that speaks [the protocol](remote-protocol.md) |
 | A radio technology | subclass `Phy` in `sim/src/phy.cpp`, add its settings to `RadioConfig` and the scenario parser | C++ |
 
 Every addition gets a version, tests, and an entry in these docs.

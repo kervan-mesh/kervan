@@ -1,0 +1,24 @@
+{
+  "description": "Two Kervan nodes and three Python beacons share one LoRa channel. Kervan node 2 runs in its own process (ksim-node) and the beacons are a Python program: different processes and languages, one deterministic simulation, interfering on the same channel.",
+  "seed": 11,
+  "duration_s": 300,
+  "mtu": 51,
+  "radio": { "type": "lora", "freq_hz": 868100000, "sf": 7, "bw_hz": 125000, "tx_power_dbm": 14 },
+  "path_loss": { "model": "log_distance", "exponent": 2.7 },
+  "nodes": [
+    { "id": 1, "pos": [0, 0], "stack": "kervan",
+      "config": { "send_to": 2, "send_every_ms": 10000, "jitter_ms": 1000, "ack": true } },
+    { "id": 2, "pos": [400, 0], "stack": "kervan",
+      "process": { "spawn": ["ksim-node", "--stack", "kervan"] },
+      "config": { "send_to": 1, "send_every_ms": 10000, "jitter_ms": 1000, "ack": true } },
+    { "id": 3, "pos": [200, 150], "stack": "py-beacon",
+      "process": { "spawn": ["${python}", "${scenario_dir}/../remote/python/examples/beacon.py"] },
+      "config": { "period_ms": 5000 } },
+    { "id": 4, "pos": [200, -150], "stack": "py-beacon",
+      "process": { "spawn": ["${python}", "${scenario_dir}/../remote/python/examples/beacon.py"] },
+      "config": { "period_ms": 5000 } },
+    { "id": 5, "pos": [600, 100], "stack": "py-beacon",
+      "process": { "spawn": ["${python}", "${scenario_dir}/../remote/python/examples/beacon.py"] },
+      "config": { "period_ms": 5000 } }
+  ]
+}
