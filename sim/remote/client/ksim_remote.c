@@ -11,6 +11,9 @@
 #if !defined(_WIN32)
 #define _POSIX_C_SOURCE 200112L
 #endif
+#if defined(__APPLE__)
+#define _DARWIN_C_SOURCE /* with _POSIX_C_SOURCE, macOS hides INADDR_LOOPBACK and SO_NOSIGPIPE */
+#endif
 
 #include "ksim/remote.h"
 
