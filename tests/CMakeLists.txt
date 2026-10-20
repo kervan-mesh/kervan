@@ -15,4 +15,5 @@ function(kervan_add_test name)
 endfunction()
 
 kervan_add_test(test_frame)
+kervan_add_test(test_node)
 kervan_add_test(test_version)

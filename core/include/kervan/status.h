@@ -18,7 +18,9 @@ typedef enum {
     KV_ERR_TRUNCATED = -3,     /* input shorter than its headers claim */
     KV_ERR_VERSION = -4,       /* unsupported wire version */
     KV_ERR_MALFORMED = -5,     /* field combination not allowed on the wire */
-    KV_ERR_UNSUPPORTED = -6    /* valid but not implemented yet (e.g. secured frames) */
+    KV_ERR_UNSUPPORTED = -6,   /* valid but not implemented yet (e.g. secured frames) */
+    KV_ERR_BUSY = -7,          /* resource in use, retry later */
+    KV_ERR_TIMEOUT = -8        /* no answer within the allowed time/retries */
 } kv_status_t;
 
 #ifdef __cplusplus
