@@ -106,7 +106,7 @@ export function ScenarioPanel({ doc, catalog, selected, onChange, onSelect }: Pr
       <h3>Channel (log-distance path loss)</h3>
       <SchemaForm
         options={PATH_LOSS_OPTIONS}
-        values={doc.path_loss}
+        values={without(doc.path_loss, 'model')}
         onChange={(k, v) => {
           const pl = setKey(doc.path_loss, k, v);
           onChange({ ...doc, path_loss: pl && { model: 'log_distance', ...pl } });

@@ -96,6 +96,7 @@ export function App() {
   const [tool, setTool] = useState<Tool>('select');
   const [showLinks, setShowLinks] = useState(true);
   const [showLosses, setShowLosses] = useState(true);
+  const [showDistances, setShowDistances] = useState(() => stored('ksim.distances') !== '0');
   const [fitKey, setFitKey] = useState(0);
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -425,6 +426,7 @@ export function App() {
           links={links}
           showLinks={showLinks}
           showLosses={showLosses}
+          showDistances={showDistances}
           replay={replay}
           time={time}
           window={window_us}
@@ -462,6 +464,17 @@ export function App() {
               title="Show frames that were heard but lost"
             >
               Losses
+            </button>
+            <button
+              className={showDistances && showLinks ? 'active' : undefined}
+              disabled={!showLinks}
+              onClick={() => {
+                setShowDistances(!showDistances);
+                store('ksim.distances', showDistances ? '0' : '1');
+              }}
+              title="Distance between linked nodes (needs Links)"
+            >
+              Distances
             </button>
           </div>
           {problem && <div className="banner error">{problem}</div>}

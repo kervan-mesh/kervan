@@ -19,6 +19,7 @@ interface Props {
   links: Link[];
   showLinks: boolean;
   showLosses: boolean;
+  showDistances: boolean; // distance labels on links
   replay: Replay | null;
   time: number; // µs
   window: number; // µs an event stays visible
@@ -227,6 +228,40 @@ export function Field(props: Props) {
       }
       ctx.setLineDash([]);
       ctx.globalAlpha = 1;
+
+      // distance labels in the middle of each link, on top of all lines
+      if (p.showDistances) {
+        const world = new Map(p.doc.nodes.map((n) => [n.id, n.pos]));
+        ctx.font = '10px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        for (const e of pairs.values()) {
+          const pa = pos.get(e.a);
+          const pb = pos.get(e.b);
+          const wa = world.get(e.a);
+          const wb = world.get(e.b);
+          if (!pa || !pb || !wa || !wb || Math.hypot(pb.x - pa.x, pb.y - pa.y) < 60) {
+            continue; // no room for a label on short lines
+          }
+          const d = Math.hypot(
+            (wb[0] ?? 0) - (wa[0] ?? 0),
+            (wb[1] ?? 0) - (wa[1] ?? 0),
+            (wb[2] ?? 0) - (wa[2] ?? 0),
+          );
+          const text = formatDistance(d);
+          const mx = (pa.x + pb.x) / 2;
+          const my = (pa.y + pb.y) / 2;
+          const w = ctx.measureText(text).width + 6;
+          ctx.globalAlpha = 0.85;
+          ctx.fillStyle = c.bg;
+          ctx.fillRect(mx - w / 2, my - 7, w, 14);
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = c.gridLabel;
+          ctx.fillText(text, mx, my);
+        }
+        ctx.textAlign = 'start';
+        ctx.textBaseline = 'alphabetic';
+      }
     }
 
     // replay
