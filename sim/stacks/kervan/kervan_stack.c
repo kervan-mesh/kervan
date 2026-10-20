@@ -5,7 +5,8 @@
 
 /*
  * Adapter: runs an unmodified kv_node on a simulated radio. Maps the simulator host to a kv_pal_t
- * and the node's next deadline to a simulator timer, and adds a small traffic generator.
+ * and the node's next deadline to a simulator timer, adds a small traffic generator, and reports
+ * relays, budget waits and per-node statistics to the trace.
  */
 
 #include "ksim/stacks/kervan.h"
@@ -16,8 +17,11 @@
 #include <string.h>
 
 #include "kervan/node.h"
+#include "kervan/topic.h"
 
 enum { TIMER_NODE = 1, TIMER_APP = 2 };
+
+#define DEFAULT_TOPIC "kervan/data"
 
 typedef struct {
     ksim_host_t host;
@@ -26,8 +30,11 @@ typedef struct {
     uint32_t send_every_ms; /* 0 = no traffic */
     uint32_t jitter_ms;     /* each period varies by up to +-jitter_ms, like a drifting clock */
     uint32_t len;
-    bool ack;
+    uint8_t qos;
+    uint16_t topic;
+    uint16_t subscribe;
     uint32_t sent;
+    kv_node_stats_t seen; /* counters already reported */
 } kstack_t;
 
 /* ---- PAL on top of the simulator host ---- */
@@ -60,13 +67,13 @@ static void pal_log(void *ctx, kv_log_level_t level, const char *msg)
 
 /* ---- node callbacks -> simulator trace ---- */
 
-static void on_data(void *user, const kv_frame_t *frame, const kv_rx_meta_t *meta)
+static void on_message(void *user, const kv_message_t *msg)
 {
     kstack_t *s = (kstack_t *)user;
-    char detail[64];
-    (void)meta;
-    snprintf(detail, sizeof(detail), "from=%u seq=%u len=%u", (unsigned)frame->hdr.src,
-             (unsigned)frame->hdr.seq, (unsigned)frame->payload_len);
+    char detail[80];
+    snprintf(detail, sizeof(detail), "from=%u seq=%u hops=%u len=%u topic=0x%04x",
+             (unsigned)msg->src, (unsigned)msg->seq, (unsigned)msg->hops, (unsigned)msg->len,
+             (unsigned)msg->topic);
     s->host.trace(s->host.ctx, "app_rx", detail);
 }
 
@@ -78,11 +85,36 @@ static void on_ack(void *user, uint8_t seq, kv_status_t result)
     s->host.trace(s->host.ctx, result == KV_OK ? "app_ack" : "app_ack_timeout", detail);
 }
 
+/* Turn counter increments into trace events (the node has no callbacks for these). */
+static void report_counters(kstack_t *s)
+{
+    const kv_node_stats_t *now = kv_node_stats(&s->node);
+    uint32_t i;
+
+    for (i = s->seen.relayed; i < now->relayed; i++) {
+        s->host.trace(s->host.ctx, "kv_relay", "");
+    }
+    for (i = s->seen.relay_cancelled; i < now->relay_cancelled; i++) {
+        s->host.trace(s->host.ctx, "kv_relay_cancel", "");
+    }
+    for (i = s->seen.relay_dropped; i < now->relay_dropped; i++) {
+        s->host.trace(s->host.ctx, "kv_relay_drop", "");
+    }
+    for (i = s->seen.budget_waits; i < now->budget_waits; i++) {
+        s->host.trace(s->host.ctx, "kv_budget_wait", "");
+    }
+    for (i = s->seen.retransmissions; i < now->retransmissions; i++) {
+        s->host.trace(s->host.ctx, "kv_retx", "");
+    }
+    s->seen = *now;
+}
+
 /* Translate kv_node_next_deadline (ms) into the simulator's node timer (µs). */
-static void sync_deadline(kstack_t *s)
+static void sync(kstack_t *s)
 {
     uint32_t at_ms;
 
+    report_counters(s);
     if (kv_node_next_deadline(&s->node, &at_ms)) {
         uint64_t now_us = s->host.now_us(s->host.ctx);
         int32_t delta_ms = (int32_t)(at_ms - (uint32_t)(now_us / 1000u));
@@ -100,8 +132,8 @@ static void schedule_app(kstack_t *s, uint64_t delay_us)
 
 static void app_send(kstack_t *s)
 {
-    uint8_t payload[KV_MTU_MAX];
-    char detail[48];
+    uint8_t payload[KV_MAX_MSG_SIZE];
+    char detail[64];
     uint8_t seq = 0;
     kv_status_t st;
     uint32_t i;
@@ -110,9 +142,10 @@ static void app_send(kstack_t *s)
         payload[i] = (uint8_t)(s->sent + i);
     }
     s->sent++;
-    st = kv_node_send(&s->node, s->send_to, payload, s->len, s->ack, &seq);
+    st = kv_node_publish(&s->node, s->send_to, s->topic, payload, s->len, s->qos, &seq);
     if (st == KV_OK) {
-        snprintf(detail, sizeof(detail), "to=%u seq=%u", (unsigned)s->send_to, (unsigned)seq);
+        snprintf(detail, sizeof(detail), "to=%u seq=%u len=%u qos=%u", (unsigned)s->send_to,
+                 (unsigned)seq, (unsigned)s->len, (unsigned)s->qos);
         s->host.trace(s->host.ctx, "app_tx", detail);
     } else {
         snprintf(detail, sizeof(detail), "to=%u status=%d", (unsigned)s->send_to, (int)st);
@@ -122,28 +155,51 @@ static void app_send(kstack_t *s)
 
 /* ---- config: "key=value;key=value" ---- */
 
-static bool apply_option(kstack_t *s, kv_node_config_t *cfg, const char *key, unsigned long v)
+static bool apply_option(kstack_t *s, kv_node_config_t *cfg, const char *key, const char *text)
 {
+    char *end;
+    unsigned long v = strtoul(text, &end, 10);
+    bool number = text[0] != '\0' && *end == '\0';
+
+    if (strcmp(key, "topic") == 0) {
+        s->topic = kv_topic_id(text);
+        return true;
+    }
+    if (strcmp(key, "subscribe") == 0) {
+        s->subscribe = kv_topic_id(text);
+        return true;
+    }
+    if (!number) {
+        return false;
+    }
     if (strcmp(key, "addr") == 0 && v < KV_ADDR_BROADCAST) {
         cfg->addr = (uint16_t)v;
     } else if (strcmp(key, "net") == 0 && v <= 0xFFu) {
         cfg->net_id = (uint8_t)v;
     } else if (strcmp(key, "hop_limit") == 0 && v <= KV_HOP_LIMIT_MAX) {
         cfg->hop_limit = (uint8_t)v;
-    } else if (strcmp(key, "ack_timeout_ms") == 0 && v <= 0xFFFFFFFFul) {
+    } else if (strcmp(key, "ack_timeout_ms") == 0 && v <= 0x7FFFFFFFul) {
         cfg->ack_timeout_ms = (uint32_t)v;
     } else if (strcmp(key, "retries") == 0 && v <= 0xFFu) {
         cfg->max_retries = (uint8_t)v;
+    } else if (strcmp(key, "duty_permille") == 0 && v <= 1000u) {
+        cfg->duty_cycle_permille = (uint16_t)v;
+    } else if (strcmp(key, "duty_burst_ms") == 0 && v <= 0x7FFFFFFFul) {
+        cfg->duty_burst_ms = (uint32_t)v;
+    } else if (strcmp(key, "relay") == 0 && v <= 1u) {
+        cfg->relay = v == 1u;
+    } else if (strcmp(key, "relay_window_ms") == 0 && v <= 0x7FFFFFFFul) {
+        cfg->relay_window_ms = (uint32_t)v;
     } else if (strcmp(key, "send_to") == 0 && v <= KV_ADDR_BROADCAST) {
         s->send_to = (uint16_t)v;
-    } else if (strcmp(key, "send_every_ms") == 0 && v <= 0xFFFFFFFFul) {
+    } else if (strcmp(key, "send_every_ms") == 0 && v <= 0x7FFFFFFFul) {
         s->send_every_ms = (uint32_t)v;
     } else if (strcmp(key, "jitter_ms") == 0 && v <= 0x7FFFFFFFul) {
         s->jitter_ms = (uint32_t)v;
-    } else if (strcmp(key, "len") == 0 && v <= KV_MTU_MAX - KV_FRAME_HEADER_LEN) {
+    } else if (strcmp(key, "len") == 0 && v <= KV_MAX_MSG_SIZE - 2u) {
         s->len = (uint32_t)v;
-    } else if (strcmp(key, "ack") == 0 && v <= 1u) {
-        s->ack = v == 1u;
+    } else if (strcmp(key, "qos") == 0 && v <= KV_QOS1) {
+        s->qos = (uint8_t)v;
     } else {
         return false;
     }
@@ -155,18 +211,18 @@ static bool parse_config(kstack_t *s, kv_node_config_t *cfg, const char *config)
     char buf[512];
     char *item;
     char *next;
+    size_t n;
 
     if (config == NULL || config[0] == '\0') {
         return true;
     }
-    if (strlen(config) >= sizeof(buf)) {
+    n = strlen(config);
+    if (n >= sizeof(buf)) {
         return false;
     }
-    memcpy(buf, config, strlen(config) + 1u);
+    memcpy(buf, config, n + 1u);
     for (item = buf; item != NULL; item = next) {
         char *eq;
-        char *end;
-        unsigned long v;
 
         next = strchr(item, ';');
         if (next != NULL) {
@@ -177,8 +233,7 @@ static bool parse_config(kstack_t *s, kv_node_config_t *cfg, const char *config)
             return false;
         }
         *eq = '\0';
-        v = strtoul(eq + 1, &end, 10);
-        if (eq[1] == '\0' || *end != '\0' || !apply_option(s, cfg, item, v)) {
+        if (!apply_option(s, cfg, item, eq + 1)) {
             char detail[96];
             snprintf(detail, sizeof(detail), "invalid config option '%.40s'", item);
             s->host.trace(s->host.ctx, "kv_error", detail);
@@ -209,11 +264,13 @@ static void *ks_create(const ksim_host_t *host, const char *config)
     }
     s->send_to = KV_ADDR_BROADCAST;
     s->len = 10;
+    s->topic = kv_topic_id(DEFAULT_TOPIC);
+    s->subscribe = s->topic;
 
     kv_node_config_default(&cfg);
     cfg.addr = (uint16_t)(host->node_id & 0xFFFFu);
     cfg.net_id = 1;
-    cfg.on_data = on_data;
+    cfg.on_message = on_message;
     cfg.on_ack = on_ack;
     cfg.user = s;
 
@@ -225,12 +282,12 @@ static void *ks_create(const ksim_host_t *host, const char *config)
     pal.random = pal_random;
     pal.log = pal_log;
 
-    if (!parse_config(s, &cfg, config) || s->len + KV_FRAME_HEADER_LEN > pal.mtu ||
-        (s->ack && s->send_to == KV_ADDR_BROADCAST) ||
-        kv_node_init(&s->node, &pal, &cfg) != KV_OK) {
+    if (!parse_config(s, &cfg, config) || (s->qos == KV_QOS1 && s->send_to == KV_ADDR_BROADCAST) ||
+        s->send_to == cfg.addr || kv_node_init(&s->node, &pal, &cfg) != KV_OK) {
         free(s);
         return NULL;
     }
+    kv_node_subscribe(&s->node, s->subscribe);
     if (s->send_every_ms > 0u) {
         /* random first offset so nodes do not all start in the same instant */
         schedule_app(s, (uint64_t)(s->host.random(s->host.ctx) % s->send_every_ms) * 1000u);
@@ -240,24 +297,39 @@ static void *ks_create(const ksim_host_t *host, const char *config)
 
 static void ks_destroy(void *inst)
 {
-    free(inst);
+    kstack_t *s = (kstack_t *)inst;
+    const kv_node_stats_t *st = kv_node_stats(&s->node);
+    char detail[320];
+
+    snprintf(detail, sizeof(detail),
+             "tx=%lu airtime_ms=%lu delivered=%lu acks=%lu retx=%lu relayed=%lu "
+             "relay_cancelled=%lu relay_dropped=%lu dup=%lu budget_waits=%lu reasm_dropped=%lu",
+             (unsigned long)st->tx_frames, (unsigned long)st->tx_airtime_ms,
+             (unsigned long)st->delivered, (unsigned long)st->acks_sent,
+             (unsigned long)st->retransmissions, (unsigned long)st->relayed,
+             (unsigned long)st->relay_cancelled, (unsigned long)st->relay_dropped,
+             (unsigned long)st->rx_duplicates, (unsigned long)st->budget_waits,
+             (unsigned long)st->reassembly_dropped);
+    s->host.trace(s->host.ctx, "kv_stats", detail);
+    free(s);
 }
 
 static void ks_on_rx(void *inst, const uint8_t *buf, size_t len, const ksim_rx_meta_t *meta)
 {
     kstack_t *s = (kstack_t *)inst;
     kv_rx_meta_t m;
+    double snr = meta->snr_db < -128.0 ? -128.0 : (meta->snr_db > 127.0 ? 127.0 : meta->snr_db);
     m.rssi = (int16_t)meta->rssi_dbm;
-    m.snr = (int8_t)meta->snr_db;
+    m.snr = (int8_t)snr;
     kv_node_on_rx(&s->node, buf, len, &m);
-    sync_deadline(s);
+    sync(s);
 }
 
 static void ks_on_tx_done(void *inst)
 {
     kstack_t *s = (kstack_t *)inst;
     kv_node_on_tx_done(&s->node);
-    sync_deadline(s);
+    sync(s);
 }
 
 static void ks_on_timer(void *inst, uint32_t timer_id)
@@ -274,12 +346,12 @@ static void ks_on_timer(void *inst, uint32_t timer_id)
         }
         schedule_app(s, (uint64_t)(period_ms > 1 ? period_ms : 1) * 1000u);
     }
-    sync_deadline(s);
+    sync(s);
 }
 
 const ksim_stack_t *ksim_stack_kervan(void)
 {
-    static const ksim_stack_t stack = {KSIM_ABI_VERSION, "kervan",      "1",        ks_create,
+    static const ksim_stack_t stack = {KSIM_ABI_VERSION, "kervan",      "2",        ks_create,
                                        ks_destroy,       ks_on_rx,      ks_on_tx_done, ks_on_timer};
     return &stack;
 }

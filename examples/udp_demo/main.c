@@ -15,6 +15,7 @@
 
 #include "kervan/kervan.h"
 #include "kervan/port/udp.h"
+#include "kervan/topic.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +23,7 @@
 
 #define NET_ID 1u
 #define LORA_MTU 51u
+#define TOPIC_NAME "demo/hello"
 
 typedef struct {
     uint16_t addr;
@@ -80,13 +82,11 @@ static options_t parse_args(int argc, char **argv)
     return o;
 }
 
-static void on_data(void *user, const kv_frame_t *frame, const kv_rx_meta_t *meta)
+static void on_message(void *user, const kv_message_t *msg)
 {
     (void)user;
-    (void)meta;
-    printf("<- from %u (seq %u, hops %u): %.*s\n", (unsigned)frame->hdr.src,
-           (unsigned)frame->hdr.seq, (unsigned)frame->hdr.hop_count, (int)frame->payload_len,
-           (const char *)frame->payload);
+    printf("<- from %u (seq %u, hops %u): %.*s\n", (unsigned)msg->src, (unsigned)msg->seq,
+           (unsigned)msg->hops, (int)msg->len, (const char *)msg->data);
     fflush(stdout);
 }
 
@@ -119,12 +119,14 @@ int main(int argc, char **argv)
     cfg.addr = o.addr;
     cfg.net_id = NET_ID;
     cfg.ack_timeout_ms = 1000;
-    cfg.on_data = on_data;
+    cfg.duty_cycle_permille = 0; /* no airtime regulation on UDP */
+    cfg.on_message = on_message;
     cfg.on_ack = on_ack;
     if (kv_udp_node_init(&udp, &node, &cfg) != KV_OK) {
         fprintf(stderr, "invalid node configuration\n");
         return 1;
     }
+    kv_node_subscribe(&node, kv_topic_id(TOPIC_NAME)); /* hear broadcasts too */
 
     printf("Kervan %s: node %u on 127.0.0.1:%u, MTU %u\n", kv_version_string(), (unsigned)o.addr,
            (unsigned)o.port, (unsigned)LORA_MTU);
@@ -140,8 +142,8 @@ int main(int argc, char **argv)
             uint8_t seq = 0;
             int n = snprintf(text, sizeof(text), "hello #%u from %u", ++counter,
                              (unsigned)o.addr);
-            kv_status_t st = kv_node_send(&node, o.dst, (const uint8_t *)text, (size_t)n, ack,
-                                          &seq);
+            kv_status_t st = kv_node_publish(&node, o.dst, kv_topic_id(TOPIC_NAME), text, (size_t)n,
+                                             ack ? KV_QOS1 : KV_QOS0, &seq);
             if (st == KV_OK) {
                 printf("-> seq %u: %s\n", (unsigned)seq, text);
             } else {

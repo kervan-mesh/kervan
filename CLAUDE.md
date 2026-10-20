@@ -21,7 +21,8 @@ and a hybrid bridge so real devices can join a simulated network. See README.md 
 
 Exists so far: `core/` (frame, node, PAL), `port/udp/` (PC port, peer lists define topology),
 `examples/udp_demo/`, `tests/`, `fuzz/`, `sim/` (ksim simulator), `docs/`.
-Wire format: `docs/frame-format.md`. Simulator: `docs/simulator.md`. Out-of-process stacks:
+Wire format: `docs/frame-format.md`. Messaging (pub/sub, QoS, fragments, duty cycle, mesh):
+`docs/messaging.md`. Simulator: `docs/simulator.md`. Out-of-process stacks:
 `docs/remote-protocol.md` (`sim/remote/`: C client, Python client, `ksim-node`).
 
 Simulator rules: ksim is **general-purpose** — `ksim_core` must never depend on Kervan core; protocols
@@ -103,10 +104,10 @@ every push/PR.
   - [x] 2b — PHY abstraction, nRF24 PHY + Enhanced ShockBurst stack, device profiles, ABI v2
     (radio control), versioned models
   - [x] 2c — out-of-process stacks: remote protocol v1, C + Python clients, ksim-node, spawn/wait
-- [ ] Phase 3 — **pub/sub, QoS 1, fragmentation** ← next (also: duty-cycle budget / retry backoff,
-  found by the simulator)
-- [ ] Phase 4 — multi-hop mesh
-- [ ] Phase 5 — web UI: scenario editor (pick device/board, protocol, radio, traffic; drag nodes on a
+- [x] Phase 3 — pub/sub (hashed 16-bit topics), QoS 0/1 with backoff, fragmentation, duty-cycle budget
+  (docs/messaging.md)
+- [x] Phase 4 — multi-hop mesh: managed flooding (SNR-weighted delay, suppression); route learning later
+- [ ] Phase 5 — **web UI** ← next: scenario editor (pick device/board, protocol, radio, traffic; drag nodes on a
   map) + live visualizer (packet animation, charts), served locally by `ksim serve`. Writes the same
   scenario JSON, reads the same trace. Needs device profiles (board = MCU + radio, limits, current).
 - [ ] Phase 6 — ESP32 + LoRa port, hardware-in-the-loop bridge

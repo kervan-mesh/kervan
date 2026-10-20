@@ -2,6 +2,7 @@ add_library(kervan_core
     src/frame.c
     src/kervan.c
     src/node.c
+    src/topic.c
 )
 add_library(kervan::core ALIAS kervan_core)
 

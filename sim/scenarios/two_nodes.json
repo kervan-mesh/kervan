@@ -7,8 +7,8 @@
   "path_loss": { "model": "log_distance", "exponent": 2.7 },
   "nodes": [
     { "id": 1, "pos": [0, 0], "stack": "kervan",
-      "config": { "send_to": 2, "send_every_ms": 10000, "ack": true } },
+      "config": { "send_to": 2, "send_every_ms": 10000, "qos": 1 } },
     { "id": 2, "pos": [500, 0], "stack": "kervan",
-      "config": { "send_to": 1, "send_every_ms": 10000, "ack": true } }
+      "config": { "send_to": 1, "send_every_ms": 10000, "qos": 1 } }
   ]
 }

@@ -44,8 +44,8 @@ Going "live" means writing a port — the protocol code does not change.
 | 0 | Repository, build system, tests, CI ✅ |
 | 1 | Frame format + PAL; two nodes talk over UDP on a PC ✅ |
 | 2 | Discrete-event simulator: LoRa + nRF24L01+ radios, device profiles, stacks in any language ✅ |
-| 3 | Pub/sub, QoS 1, fragmentation |
-| 4 | Multi-hop mesh |
+| 3 | Pub/sub, QoS 1, fragmentation, duty-cycle budget ✅ |
+| 4 | Multi-hop mesh (managed flooding) ✅ |
 | 5 | Web UI: build scenarios visually (boards, protocols, radios, traffic) and watch them run |
 | 6 | ESP32 + LoRa port, hardware-in-the-loop bridge |
 | 7 | More PHYs (BLE, 802.15.4, ESP-NOW), encryption, energy model, MQTT gateway (*Kervansaray*) |

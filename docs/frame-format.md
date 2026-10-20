@@ -47,10 +47,10 @@ Integrity against tampering will come from the MIC once encryption lands.
 
 | Value | Type | Payload |
 |---|---|---|
-| `0x0` | `DATA` | Application data. From phase 3 the first 2 bytes are a topic id. |
+| `0x0` | `DATA` | Topic id (u16 LE) followed by the application data (see [messaging.md](messaging.md)). |
 | `0x1` | `ACK` | 1 byte: the `seq` being acknowledged. |
 | `0x2` | `CTRL` | 1 byte subtype + subtype data (PING/PONG first; BEACON, JOIN, ROUTE later). |
-| `0x3`–`0xE` | reserved | Candidates: REQ/RESP, REGISTER (phase 3). |
+| `0x3`–`0xE` | reserved | Candidates: REQ/RESP, ROUTE. |
 | `0xF` | `EXT` | Next byte is an extended type. Insurance; not used yet. |
 
 ## Fragmentation
@@ -62,16 +62,18 @@ Integrity against tampering will come from the MIC once encryption lands.
   of order, and reject a message that will not fit its buffer immediately.
 - Payload is opaque to fragmentation: a topic id lives at the start of the *reassembled* payload.
 - Relays do **not** reassemble; they forward fragments individually and stay stateless.
-- Lost fragment: reassembly times out and the partial message is dropped. With `ack_req`, the sender
-  retransmits the whole message. Selective repair (fragment bitmap in the ACK) may come in phase 3.
+- Lost fragment: when no fragment arrived for 30 s the partial message is dropped (the timeout
+  restarts with every fragment, since a duty cycle paces them). With `ack_req`, the sender
+  retransmits the whole message. Selective repair (fragment bitmap in the ACK) may come later.
 - Limits are compile-time: `KV_MAX_MSG_SIZE`, `KV_REASSEMBLY_SLOTS`. When slots are full, new
   messages are rejected (evicting partial ones would be an easy DoS).
 
-## Relay and duplicate rules (phase 4, recorded here because they shape the header)
+## Relay and duplicate rules
 
 - Duplicate key is `(src, seq)`, or `(src, seq, index)` for fragments.
-- A relay forwards a frame if `ver` and `net_id` match, it is not a duplicate and `hop_limit > 0`.
-  It does **not** look at `type`, so old relays carry frame types they do not understand.
+- A relay forwards a frame if `ver` and `net_id` match, it is not a duplicate, it is not addressed
+  to the relay itself and `hop_limit > 0`. It does **not** look at `type`, so old relays carry frame
+  types they do not understand. Timing, suppression and budget: [messaging.md](messaging.md#mesh-managed-flooding).
 - An unknown `type` reaching its destination is silently dropped.
 
 ## Design decisions

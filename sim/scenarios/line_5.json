@@ -8,14 +8,14 @@
   "duty_cycle_limit": 0.01,
   "nodes": [
     { "id": 1, "pos": [0, 0], "stack": "kervan",
-      "config": { "send_to": 2, "send_every_ms": 60000, "jitter_ms": 5000, "ack": true } },
+      "config": { "send_to": 2, "send_every_ms": 60000, "jitter_ms": 5000, "qos": 1 } },
     { "id": 2, "pos": [1000, 0], "stack": "kervan",
-      "config": { "send_to": 3, "send_every_ms": 60000, "jitter_ms": 5000, "ack": true } },
+      "config": { "send_to": 3, "send_every_ms": 60000, "jitter_ms": 5000, "qos": 1 } },
     { "id": 3, "pos": [2000, 0], "stack": "kervan",
-      "config": { "send_to": 4, "send_every_ms": 60000, "jitter_ms": 5000, "ack": true } },
+      "config": { "send_to": 4, "send_every_ms": 60000, "jitter_ms": 5000, "qos": 1 } },
     { "id": 4, "pos": [3000, 0], "stack": "kervan",
-      "config": { "send_to": 5, "send_every_ms": 60000, "jitter_ms": 5000, "ack": true } },
+      "config": { "send_to": 5, "send_every_ms": 60000, "jitter_ms": 5000, "qos": 1 } },
     { "id": 5, "pos": [4000, 0], "stack": "kervan",
-      "config": { "send_to": 4, "send_every_ms": 60000, "jitter_ms": 5000, "ack": true } }
+      "config": { "send_to": 4, "send_every_ms": 60000, "jitter_ms": 5000, "qos": 1 } }
   ]
 }

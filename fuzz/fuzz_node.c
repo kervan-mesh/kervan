@@ -11,7 +11,7 @@
  *   op % 4 == 0: receive  len:1 bytes[len]
  *   op % 4 == 1: tx done
  *   op % 4 == 2: advance  steps:1      (steps * 97 ms, then tick)
- *   op % 4 == 3: send     dst_lo:1 len:1 bytes[len]  (bit 7 of op = ack_req)
+ *   op % 4 == 3: publish  dst_lo:1 len:1 bytes[len]  (bit 7 of op = QoS 1)
  */
 
 #include "kervan/node.h"
@@ -67,6 +67,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     if (kv_node_init(&node, &pal, &cfg) != KV_OK) {
         return 0;
     }
+    kv_node_subscribe(&node, 0x0042u); /* so broadcasts reach the delivery path */
 
     while (pos < size) {
         uint8_t op = data[pos++];
@@ -104,7 +105,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
                 if (len > size - pos) {
                     len = size - pos;
                 }
-                (void)kv_node_send(&node, dst, &data[pos], len, (op & 0x80u) != 0u, NULL);
+                (void)kv_node_publish(&node, dst, 0x0042u, &data[pos], len,
+                                      (op & 0x80u) != 0u ? KV_QOS1 : KV_QOS0, NULL);
                 pos += len;
             }
             break;

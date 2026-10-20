@@ -243,6 +243,6 @@ TEST(Remote, ShippedMixedScenario)
     EXPECT_GT(sum.app_events.at("app_ack"), 0u);
     EXPECT_GT(sum.app_events.at("py_rx"), 0u);
     EXPECT_EQ(sum.versions.at("stack:py-beacon"), "1");
-    EXPECT_EQ(sum.versions.at("stack:kervan"), "1");
+    EXPECT_EQ(sum.versions.at("stack:kervan"), "2");
 }
 #endif

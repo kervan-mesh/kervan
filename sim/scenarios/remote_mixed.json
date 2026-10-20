@@ -7,10 +7,10 @@
   "path_loss": { "model": "log_distance", "exponent": 2.7 },
   "nodes": [
     { "id": 1, "pos": [0, 0], "stack": "kervan",
-      "config": { "send_to": 2, "send_every_ms": 10000, "jitter_ms": 1000, "ack": true } },
+      "config": { "send_to": 2, "send_every_ms": 10000, "jitter_ms": 1000, "qos": 1 } },
     { "id": 2, "pos": [400, 0], "stack": "kervan",
       "process": { "spawn": ["ksim-node", "--stack", "kervan"] },
-      "config": { "send_to": 1, "send_every_ms": 10000, "jitter_ms": 1000, "ack": true } },
+      "config": { "send_to": 1, "send_every_ms": 10000, "jitter_ms": 1000, "qos": 1 } },
     { "id": 3, "pos": [200, 150], "stack": "py-beacon",
       "process": { "spawn": ["${python}", "${scenario_dir}/../remote/python/examples/beacon.py"] },
       "config": { "period_ms": 5000 } },

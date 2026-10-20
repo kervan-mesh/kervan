@@ -56,7 +56,7 @@ Scenario base(Time duration_us)
 TEST(KervanStack, AcknowledgedExchange)
 {
     Scenario s = base(120'000'000);
-    s.nodes = {kervan_node(1, 0, "send_to=2;send_every_ms=10000;ack=1"),
+    s.nodes = {kervan_node(1, 0, "send_to=2;send_every_ms=10000;qos=1"),
                kervan_node(2, 500, "")};
     const Summary sum = run(s);
 
@@ -68,27 +68,78 @@ TEST(KervanStack, AcknowledgedExchange)
     EXPECT_EQ(count(sum, "app_ack_timeout"), 0u);
     EXPECT_EQ(count(sum, "app_tx_busy"), 0u);
     EXPECT_EQ(sum.lost_collision + sum.lost_half_duplex, 0u);
+    EXPECT_EQ(count(sum, "kv_stats"), 2u); // one summary per node
 }
 
-TEST(KervanStack, UnreachableDestinationTimesOut)
+// 1 and 3 are 3 km apart, node 2 sits in the middle and hears both.
+TEST(KervanStack, WithoutRelayingTheDestinationIsUnreachable)
 {
-    // 1 and 3 are 3 km apart; node 2 hears both but does not relay (mesh is phase 4)
     Scenario s = base(120'000'000);
-    s.nodes = {kervan_node(1, 0, "send_to=3;send_every_ms=30000;ack=1;ack_timeout_ms=2000"),
-               kervan_node(2, 1500, ""), kervan_node(3, 3000, "")};
+    s.nodes = {kervan_node(1, 0, "send_to=3;send_every_ms=30000;qos=1;ack_timeout_ms=2000"),
+               kervan_node(2, 1500, "relay=0"), kervan_node(3, 3000, "")};
     const Summary sum = run(s);
 
     EXPECT_GE(count(sum, "app_tx"), 3u);
     EXPECT_EQ(count(sum, "app_ack"), 0u);
     EXPECT_EQ(count(sum, "app_rx"), 0u);
     EXPECT_GE(count(sum, "app_ack_timeout"), 3u);
-    // first attempt + 3 retries per message, all heard by node 2
-    EXPECT_GE(sum.nodes[1].rx_ok, 4 * count(sum, "app_ack_timeout"));
+    EXPECT_GE(count(sum, "kv_retx"), 3u * count(sum, "app_ack_timeout"));
+    EXPECT_EQ(count(sum, "kv_relay"), 0u);
+}
+
+TEST(KervanStack, RelayingReachesTheDestinationOverTwoHops)
+{
+    Scenario s = base(120'000'000);
+    s.nodes = {kervan_node(1, 0, "send_to=3;send_every_ms=30000;qos=1"),
+               kervan_node(2, 1500, ""), kervan_node(3, 3000, "")};
+    const Summary sum = run(s);
+
+    const uint64_t sent = count(sum, "app_tx");
+    EXPECT_GE(sent, 3u);
+    EXPECT_GE(count(sum, "app_rx"), sent - 1);
+    EXPECT_GE(count(sum, "app_ack"), sent - 1);
+    EXPECT_EQ(count(sum, "app_ack_timeout"), 0u);
+    // node 2 carries the message one way and the ACK the other
+    EXPECT_GE(count(sum, "kv_relay"), 2u * (sent - 1));
+}
+
+TEST(KervanStack, LargeMessagesAreFragmented)
+{
+    Scenario s = base(300'000'000);
+    s.nodes = {kervan_node(1, 0, "send_to=2;send_every_ms=60000;qos=1;len=150"),
+               kervan_node(2, 500, "")};
+    const Summary sum = run(s);
+
+    const uint64_t sent = count(sum, "app_tx");
+    EXPECT_GE(sent, 5u);
+    EXPECT_GE(count(sum, "app_rx"), sent - 1);
+    EXPECT_GE(count(sum, "app_ack"), sent - 1);
+    // 152 bytes over a 51-byte MTU: 4 fragments per message, each followed by ~10 s of
+    // off-time at 1 % (SF7, 102 ms): the receiver's timeout restarts with every fragment
+    EXPECT_GE(sum.nodes[0].tx, 4u * (sent - 1));
+}
+
+// A node that wants to send every second at SF7 would use ~5 % of the time; the budget keeps
+// it at 1 % (plus at most one frame).
+TEST(KervanStack, DutyCycleBudgetHoldsTheLimit)
+{
+    Scenario s = base(600'000'000);
+    s.nodes = {kervan_node(1, 0, "send_to=2;send_every_ms=1000;len=40"),
+               kervan_node(2, 500, "")};
+    const Summary sum = run(s);
+
+    const double duty = static_cast<double>(sum.nodes[0].airtime_us) /
+                        static_cast<double>(sum.duration_us);
+    EXPECT_LE(duty, 0.0101);
+    EXPECT_GT(duty, 0.009);
+    EXPECT_GT(count(sum, "kv_budget_wait"), 0u);
+    EXPECT_GT(count(sum, "app_tx_busy"), 0u); // the queue fills up while waiting
 }
 
 TEST(KervanStack, RejectsBadConfig)
 {
-    for (const char *cfg : {"bogus=1", "addr=65535", "len=60", "ack=1", "send_to"}) {
+    for (const char *cfg : {"bogus=1", "addr=65535", "len=300", "qos=1", "qos=2", "send_to",
+                            "relay=2", "duty_permille=1001", "send_to=1", "retries=x"}) {
         SCOPED_TRACE(cfg);
         Scenario s = base(1'000'000);
         s.nodes = {kervan_node(1, 0, cfg)};
@@ -105,5 +156,5 @@ TEST(KervanStack, GoldenLineScenario)
     const Summary b = run(s);
     EXPECT_EQ(a.trace_hash, b.trace_hash);
     EXPECT_GT(count(a, "app_ack"), 0u);
-    EXPECT_EQ(a.trace_hash, 0x6c0ae003c6372e89ull) << std::hex << "actual: 0x" << a.trace_hash;
+    EXPECT_EQ(a.trace_hash, 0x1078231ca431da15ull) << std::hex << "actual: 0x" << a.trace_hash;
 }

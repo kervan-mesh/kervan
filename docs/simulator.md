@@ -21,7 +21,7 @@ carry a version that is recorded in every trace.
 ├──────────────────────────────────────────────────────┤
 │  Stack adapter interface (C ABI v2, ksim/stack.h)     │
 ├─────────────┬──────────────────┬─────────────────────┤
-│  kervan v1  │  nrf24-esb v1    │ …                   │
+│  kervan v2  │  nrf24-esb v1    │ …                   │
 └─────────────┴──────────────────┴─────────────────────┘
 ```
 
@@ -174,7 +174,7 @@ out of process plus Python beacons on one LoRa channel.
   "nodes": [
     { "id": 1, "pos": [0, 0], "device": "esp32-sx1276", "stack": "kervan",
       "radio": { "sf": 9 },
-      "config": { "send_to": 2, "send_every_ms": 60000, "ack": true } },
+      "config": { "send_to": 2, "send_every_ms": 60000, "qos": 1 } },
     { "id": 2, "pos": [800, 0], "stack": "kervan" }
   ]
 }
@@ -187,21 +187,29 @@ out of process plus Python beacons on one LoRa channel.
 - `config` is handed to the stack as `key=value;key=value`. Use strings for hexadecimal values
   (`"addr": "0xE7E7E7E701"`).
 
-### Kervan stack config (`kervan` v1, LoRa radios)
+### Kervan stack config (`kervan` v2, LoRa radios)
+
+Behaviour: [messaging.md](messaging.md).
 
 | Key | Default | Meaning |
 |---|---|---|
 | `addr` | node id | Kervan address |
 | `net` | 1 | network id |
 | `hop_limit` | 3 | |
-| `ack_timeout_ms`, `retries` | 5000, 3 | |
+| `ack_timeout_ms`, `retries` | 5000, 3 | first ACK wait (doubles per retry), retransmissions |
+| `relay`, `relay_window_ms` | 1, 1000 | take part in the mesh; relay delay window |
+| `duty_permille`, `duty_burst_ms`, `ack_debt_ms` | 10, 0, 500 | airtime budget (10 = 1 %, 0 = off) |
+| `topic` | `kervan/data` | topic name the traffic generator publishes to |
+| `subscribe` | = `topic` | topic name whose broadcasts the node receives |
 | `send_to` | — | destination address (65535 = broadcast) |
 | `send_every_ms` | 0 (off) | traffic period; the first message goes out at a random offset |
 | `jitter_ms` | 0 | each period varies randomly by up to ±jitter (real clocks drift; strictly periodic senders keep colliding with the same partners) |
-| `len` | 10 | payload bytes |
-| `ack` | false | request acknowledgements |
+| `len` | 10 | payload bytes (up to 254; larger than one frame = fragmented) |
+| `qos` | 0 | 1 = acknowledged (needs a unicast `send_to`) |
 
-It reports `app_tx`, `app_tx_busy`, `app_rx`, `app_ack`, `app_ack_timeout`.
+It reports `app_tx`, `app_tx_busy` (queue full), `app_rx` (with `hops`), `app_ack`,
+`app_ack_timeout`, `kv_relay`, `kv_relay_cancel`, `kv_relay_drop`, `kv_budget_wait`, `kv_retx`, and
+one `kv_stats` line per node at the end.
 
 ### nRF24 ESB stack config (`nrf24-esb` v1, nRF24 radios)
 
@@ -213,7 +221,7 @@ JSON Lines, one event per line. The first line records the versions of everythin
 the run:
 
 ```json
-{"t":0,"ev":"meta","ksim":"0.1.0","abi":2,"phy":{"lora":"1"},"stack":{"kervan":"1"},"device":{"esp32-sx1276":"1"}}
+{"t":0,"ev":"meta","ksim":"0.1.0","abi":2,"phy":{"lora":"1"},"stack":{"kervan":"2"},"device":{"esp32-sx1276":"1"}}
 {"t":1520384,"ev":"tx","node":1,"len":18,"airtime":185344}
 {"t":1705728,"ev":"rx","node":2,"from":1,"rssi":-101.23,"snr":15.8}
 {"t":1705728,"ev":"lost","node":3,"from":1,"reason":"collision"}

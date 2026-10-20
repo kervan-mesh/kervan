@@ -12,11 +12,13 @@
 
 #define NET 3u
 #define LORA_MTU 51u
+#define TOPIC 0x0042u
 #define LOOP_LIMIT_MS 3000u /* fail instead of hanging if something is wrong */
 
 typedef struct {
     size_t data_count;
-    uint8_t data[KV_MTU_MAX];
+    uint8_t data[KV_MAX_MSG_SIZE];
+    uint8_t hops;
     size_t data_len;
     size_t ack_count;
     kv_status_t ack_result;
@@ -26,13 +28,13 @@ static kv_udp_t udp_a, udp_b, udp_c;
 static kv_node_t node_a, node_b, node_c;
 static events_t ev_a, ev_b, ev_c;
 
-static void on_data(void *user, const kv_frame_t *frame, const kv_rx_meta_t *meta)
+static void on_message(void *user, const kv_message_t *msg)
 {
     events_t *ev = (events_t *)user;
-    (void)meta;
     ev->data_count++;
-    ev->data_len = frame->payload_len;
-    memcpy(ev->data, frame->payload, frame->payload_len);
+    ev->data_len = msg->len;
+    ev->hops = msg->hops;
+    memcpy(ev->data, msg->data, msg->len);
 }
 
 static void on_ack(void *user, uint8_t seq, kv_status_t result)
@@ -54,10 +56,13 @@ static void open_node(kv_udp_t *udp, kv_node_t *node, events_t *ev, uint16_t add
     cfg.net_id = NET;
     cfg.ack_timeout_ms = 100;
     cfg.max_retries = 1;
-    cfg.on_data = on_data;
+    cfg.duty_cycle_permille = 0; // no regulation on UDP
+    cfg.relay = false;
+    cfg.on_message = on_message;
     cfg.on_ack = on_ack;
     cfg.user = ev;
     TEST_ASSERT_EQUAL_INT(KV_OK, kv_udp_node_init(udp, node, &cfg));
+    TEST_ASSERT_EQUAL_INT(KV_OK, kv_node_subscribe(node, TOPIC));
 }
 
 static void make_link(kv_udp_t *from, kv_udp_t *to)
@@ -100,7 +105,7 @@ static void test_unicast_with_ack(void)
     make_link(&udp_a, &udp_b);
     make_link(&udp_b, &udp_a);
 
-    TEST_ASSERT_EQUAL_INT(KV_OK, kv_node_send(&node_a, 0x0002, msg, sizeof(msg), true, NULL));
+    TEST_ASSERT_EQUAL_INT(KV_OK, kv_node_publish(&node_a, 0x0002, TOPIC, msg, sizeof(msg), KV_QOS1, NULL));
     RUN_UNTIL(ev_a.ack_count > 0);
 
     TEST_ASSERT_EQUAL_size_t(1, ev_b.data_count);
@@ -115,7 +120,7 @@ static void test_broadcast_reaches_all_peers(void)
     make_link(&udp_a, &udp_c);
 
     TEST_ASSERT_EQUAL_INT(KV_OK,
-                          kv_node_send(&node_a, KV_ADDR_BROADCAST, msg, sizeof(msg), false, NULL));
+                          kv_node_publish(&node_a, KV_ADDR_BROADCAST, TOPIC, msg, sizeof(msg), KV_QOS0, NULL));
     RUN_UNTIL(ev_b.data_count > 0 && ev_c.data_count > 0);
 
     TEST_ASSERT_EQUAL_size_t(1, ev_b.data_count);
@@ -127,7 +132,7 @@ static void test_one_way_link_times_out(void)
     /* A hears nobody: B gets the data but its ACKs go nowhere */
     make_link(&udp_a, &udp_b);
 
-    TEST_ASSERT_EQUAL_INT(KV_OK, kv_node_send(&node_a, 0x0002, msg, sizeof(msg), true, NULL));
+    TEST_ASSERT_EQUAL_INT(KV_OK, kv_node_publish(&node_a, 0x0002, TOPIC, msg, sizeof(msg), KV_QOS1, NULL));
     RUN_UNTIL(ev_a.ack_count > 0);
 
     TEST_ASSERT_EQUAL_size_t(1, ev_b.data_count); /* retry was deduplicated */
@@ -140,7 +145,7 @@ static void test_unlinked_node_hears_nothing(void)
     make_link(&udp_a, &udp_b);
 
     TEST_ASSERT_EQUAL_INT(KV_OK,
-                          kv_node_send(&node_a, KV_ADDR_BROADCAST, msg, sizeof(msg), false, NULL));
+                          kv_node_publish(&node_a, KV_ADDR_BROADCAST, TOPIC, msg, sizeof(msg), KV_QOS0, NULL));
     RUN_UNTIL(ev_b.data_count > 0);
     kv_udp_poll(&udp_c, 50);
 
@@ -148,19 +153,43 @@ static void test_unlinked_node_hears_nothing(void)
     TEST_ASSERT_EQUAL_size_t(0, ev_c.data_count);
 }
 
-static void test_mtu_is_enforced(void)
+static void test_large_message_is_fragmented(void)
 {
-    uint8_t big[LORA_MTU];
+    uint8_t big[KV_MAX_MSG_SIZE];
+    size_t i;
 
-    memset(big, 0x55, sizeof(big));
+    for (i = 0; i < sizeof(big); i++) {
+        big[i] = (uint8_t)i;
+    }
     make_link(&udp_a, &udp_b);
-    TEST_ASSERT_EQUAL_INT(KV_ERR_NO_SPACE,
-                          kv_node_send(&node_a, 0x0002, big, LORA_MTU - KV_FRAME_HEADER_LEN + 1u,
-                                       false, NULL));
-    TEST_ASSERT_EQUAL_INT(KV_OK, kv_node_send(&node_a, 0x0002, big,
-                                              LORA_MTU - KV_FRAME_HEADER_LEN, false, NULL));
-    RUN_UNTIL(ev_b.data_count > 0);
-    TEST_ASSERT_EQUAL_size_t(LORA_MTU - KV_FRAME_HEADER_LEN, ev_b.data_len);
+    make_link(&udp_b, &udp_a);
+    TEST_ASSERT_EQUAL_INT(KV_ERR_NO_SPACE, kv_node_publish(&node_a, 0x0002, TOPIC, big,
+                                                           KV_MAX_MSG_SIZE - 1u, KV_QOS0, NULL));
+    /* 200 bytes over a 51-byte MTU: 5 fragments, acknowledged once */
+    TEST_ASSERT_EQUAL_INT(KV_OK, kv_node_publish(&node_a, 0x0002, TOPIC, big, 200, KV_QOS1, NULL));
+    RUN_UNTIL(ev_a.ack_count > 0);
+    TEST_ASSERT_EQUAL_size_t(1, ev_b.data_count);
+    TEST_ASSERT_EQUAL_size_t(200, ev_b.data_len);
+    TEST_ASSERT_EQUAL_MEMORY(big, ev_b.data, 200);
+    TEST_ASSERT_EQUAL_INT(KV_OK, ev_a.ack_result);
+}
+
+/* A - B - C over real sockets: C is out of A's range, B relays. */
+static void test_two_hops_over_udp(void)
+{
+    node_b.cfg.relay = true;
+    node_b.cfg.relay_window_ms = 50;
+    node_a.cfg.ack_timeout_ms = 2000; /* two relays (data, then ACK) must fit */
+    make_link(&udp_a, &udp_b);
+    make_link(&udp_b, &udp_a);
+    make_link(&udp_b, &udp_c);
+    make_link(&udp_c, &udp_b);
+
+    TEST_ASSERT_EQUAL_INT(KV_OK, kv_node_publish(&node_a, 0x0003, TOPIC, msg, sizeof(msg), KV_QOS1, NULL));
+    RUN_UNTIL(ev_a.ack_count > 0);
+    TEST_ASSERT_EQUAL_size_t(1, ev_c.data_count);
+    TEST_ASSERT_EQUAL_UINT8(1, ev_c.hops);
+    TEST_ASSERT_EQUAL_INT(KV_OK, ev_a.ack_result);
 }
 
 static void test_port_argument_checks(void)
@@ -185,7 +214,8 @@ int main(void)
     RUN_TEST(test_broadcast_reaches_all_peers);
     RUN_TEST(test_one_way_link_times_out);
     RUN_TEST(test_unlinked_node_hears_nothing);
-    RUN_TEST(test_mtu_is_enforced);
+    RUN_TEST(test_large_message_is_fragmented);
+    RUN_TEST(test_two_hops_over_udp);
     RUN_TEST(test_port_argument_checks);
     return UNITY_END();
 }
