@@ -10,6 +10,7 @@
 import { useState } from 'react';
 
 import type { OptionSpec } from '../api';
+import { displayValue, parseNumberInput, toHex } from '../model/options';
 import type { ConfigValue } from '../model/scenario';
 
 interface Props {
@@ -19,6 +20,7 @@ interface Props {
   inherited?: Record<string, ConfigValue | undefined>;
   onChange: (key: string, value: ConfigValue | undefined) => void;
   grouped?: boolean;
+  groupPrefix?: string; // e.g. the stack name, so its groups do not look like the PHY's
 }
 
 function show(v: ConfigValue | undefined): string {
@@ -31,14 +33,13 @@ function show(v: ConfigValue | undefined): string {
   return String(v);
 }
 
-export function outOfRange(o: OptionSpec, v: number): boolean {
-  return (
-    !Number.isFinite(v) ||
-    (o.type === 'int' && !Number.isInteger(v)) ||
-    (o.min !== undefined && v < o.min) ||
-    (o.max !== undefined && v > o.max) ||
-    (o.step !== undefined && o.min !== undefined && (v - o.min) % o.step !== 0)
-  );
+function rangeTitle(o: OptionSpec): string | undefined {
+  if (o.min === undefined && o.max === undefined) {
+    return undefined;
+  }
+  const show = (v: number | undefined) =>
+    v === undefined ? '' : o.format === 'hex' ? toHex(v) : String(v);
+  return `${show(o.min)} … ${show(o.max)}${o.step ? ` in steps of ${o.step}` : ''}`;
 }
 
 function NumberField(props: {
@@ -50,28 +51,20 @@ function NumberField(props: {
   const { o, value } = props;
   // keep what the user typed, even if it is not a valid number yet
   const [text, setText] = useState<string | null>(null);
-  const shown = text ?? (value === undefined ? '' : String(value));
-  const parsed = Number(shown);
-  const invalid = shown.trim() !== '' && outOfRange(o, parsed);
+  const shown = text ?? displayValue(o, value);
   return (
     <input
       type="text"
-      inputMode="decimal"
-      className={invalid ? 'invalid' : undefined}
+      inputMode={o.format === 'hex' ? 'text' : 'decimal'}
+      className={parseNumberInput(o, shown).valid ? undefined : 'invalid'}
       value={shown}
       placeholder={props.placeholder}
-      title={
-        o.min !== undefined || o.max !== undefined
-          ? `${o.min ?? ''} … ${o.max ?? ''}${o.step ? ` in steps of ${o.step}` : ''}`
-          : undefined
-      }
+      title={rangeTitle(o)}
       onChange={(e) => {
-        const t = e.target.value;
-        setText(t);
-        if (t.trim() === '') {
-          props.onChange(undefined);
-        } else if (!outOfRange(o, Number(t))) {
-          props.onChange(Number(t));
+        setText(e.target.value);
+        const r = parseNumberInput(o, e.target.value);
+        if (r.valid) {
+          props.onChange(r.value);
         }
       }}
       onBlur={() => setText(null)}
@@ -87,7 +80,10 @@ function Field(props: {
 }) {
   const { o, value } = props;
   const fallback = props.inherited ?? o.default;
-  const placeholder = fallback === undefined ? 'not set' : `default: ${show(fallback)}`;
+  const placeholder =
+    fallback === undefined
+      ? 'not set'
+      : `default: ${o.type === 'bool' ? show(fallback) : displayValue(o, fallback)}`;
 
   switch (o.type) {
     case 'bool':
@@ -152,7 +148,12 @@ export function SchemaForm(props: Props) {
     <div>
       {[...groups].map(([group, options]) => (
         <div key={group}>
-          {group && <h3>{group}</h3>}
+          {group && (
+            <h3>
+              {props.groupPrefix ? `${props.groupPrefix} · ` : ''}
+              {group}
+            </h3>
+          )}
           {options.map((o) => (
             <div className="row" key={o.key}>
               <label title={o.help}>{o.key}</label>

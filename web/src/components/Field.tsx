@@ -128,8 +128,8 @@ export function Field(props: Props) {
       return;
     }
     const b = bounds(propsRef.current.doc);
-    const dx = Math.max(b.maxX - b.minX, 200);
-    const dy = Math.max(b.maxY - b.minY, 200);
+    const dx = Math.max(b.maxX - b.minX, 20);
+    const dy = Math.max(b.maxY - b.minY, 20);
     const pad = 70;
     const scale = Math.min((w - 2 * pad) / dx, (h - 2 * pad) / dy);
     view.current = {

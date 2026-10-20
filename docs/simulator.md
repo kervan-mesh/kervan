@@ -149,6 +149,8 @@ without UI code:
 
 - `phy`: radios the stack runs on (the UI offers it only for those).
 - `type`: `int` (with optional `min`, `max`, `step`), `number`, `bool`, `string`, `enum` (`values`).
+- `format: "hex"` (for `int`): shown and stored as `"0x..."` (radio addresses); the stack must
+  parse it with base 0 (`strtoull(text, &end, 0)`).
 - `default`: what applies when the key is left out; omit it when the default depends on the node
   (e.g. an address derived from the node id). A test (`ServeApi.SchemaDefaultsAreTheStackDefaults`)
   runs every built-in stack with all schema defaults spelled out and requires an identical trace.

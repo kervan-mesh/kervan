@@ -18,6 +18,7 @@ export interface OptionSpec {
   step?: number;
   values?: (number | string)[];
   default?: number | string | boolean;
+  format?: 'hex'; // int shown and stored as "0x..." (addresses)
   group?: string;
 }
 

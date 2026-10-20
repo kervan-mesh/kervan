@@ -1,0 +1,11 @@
+{
+  "seed": 1,
+  "mtu": 51,
+  "path_loss": { "model": "log_distance", "exponent": 3, "shadowing_sigma_db": 4 },
+  "nodes": [
+    { "id": 1, "pos": [-110, 30], "stack": "nrf24-esb", "device": "arduino-nrf24l01p", "config": { "listen": true } },
+    { "id": 2, "pos": [-4, 32], "stack": "nrf24-esb", "device": "arduino-nrf24l01p", "config": { "listen": false, "send_to": 996028180225, "send_every_ms": 2000 } }
+  ],
+  "description": "NRF24 Haberleşme Test",
+  "duration_s": 10
+}

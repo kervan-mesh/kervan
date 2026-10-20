@@ -445,7 +445,8 @@ static void es_on_timer(void *inst, uint32_t timer_id)
  * defaults in sync with es_create; a test checks them. */
 static const char config_schema[] =
     "{\"phy\":[\"nrf24\"],\"options\":["
-    "{\"key\":\"addr\",\"type\":\"int\",\"min\":0,\"max\":1099511627775,\"group\":\"radio\","
+    "{\"key\":\"addr\",\"type\":\"int\",\"min\":0,\"max\":1099511627775,\"format\":\"hex\","
+    "\"group\":\"radio\","
     "\"help\":\"Own address, up to 5 bytes (default: 0xE7E7E7E7 + node id)\"},"
     "{\"key\":\"aw\",\"type\":\"int\",\"min\":3,\"max\":5,\"default\":5,\"group\":\"radio\","
     "\"help\":\"Address width in bytes\"},"
@@ -461,7 +462,8 @@ static const char config_schema[] =
     "\"help\":\"Auto retransmit count\"},"
     "{\"key\":\"ack_payload_len\",\"type\":\"int\",\"min\":0,\"max\":32,\"default\":0,"
     "\"group\":\"esb\",\"help\":\"Payload carried back in every ACK\"},"
-    "{\"key\":\"send_to\",\"type\":\"int\",\"min\":0,\"max\":1099511627775,\"group\":\"traffic\","
+    "{\"key\":\"send_to\",\"type\":\"int\",\"min\":0,\"max\":1099511627775,\"format\":\"hex\","
+    "\"group\":\"traffic\","
     "\"help\":\"Destination address (needed when sending)\"},"
     "{\"key\":\"send_every_ms\",\"type\":\"int\",\"min\":0,\"max\":4294967295,\"default\":0,"
     "\"group\":\"traffic\",\"help\":\"Send period; 0 = no traffic\"},"

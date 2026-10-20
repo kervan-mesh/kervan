@@ -160,6 +160,10 @@ TEST(ServeApi, EveryBuiltinStackHasAValidSchema)
             if (type == "enum") {
                 EXPECT_FALSE(o.at("values").empty());
             }
+            if (o.contains("format")) {
+                EXPECT_EQ(o.at("format"), "hex");
+                EXPECT_EQ(type, "int");
+            }
         }
     }
 }

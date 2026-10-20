@@ -200,6 +200,7 @@ export function NodePanel(props: Props) {
       {stack?.schema ? (
         <SchemaForm
           grouped
+          groupPrefix={node.stack}
           options={stack.schema.options}
           values={node.config}
           onChange={(k, v) => set(withField(node, 'config', setKey(node.config, k, v)))}
