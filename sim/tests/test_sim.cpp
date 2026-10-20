@@ -25,6 +25,8 @@ namespace {
 // ---- scripted test stack ----
 // config: send_at=<us>  len=<bytes>  twice=1 (send again while busy)
 //         timers=1 (timer self-test)  reject=1 (fail create)
+//         rx_off_at=<us>  rx_on_at=<us>  retune_at=<us> (set SF 7 again)
+//         probe=1 (radio_get/radio_set calls at create and while transmitting)
 
 struct RxRec {
     Time t;
@@ -40,6 +42,8 @@ struct Rec {
     int send_result = 999;
     int second_send_result = 999;
     std::vector<std::pair<uint32_t, Time>> timers;
+    std::map<std::string, int> probe; // name -> radio_get/radio_set result
+    std::map<std::string, int64_t> probe_value;
 };
 
 std::map<uint32_t, Rec> g_rec;
@@ -48,9 +52,36 @@ struct Inst {
     ksim_host_t host;
     size_t len = 10;
     bool twice = false;
+    bool probe = false;
 };
 
 constexpr uint32_t kSendTimer = 100;
+constexpr uint32_t kRxOffTimer = 101;
+constexpr uint32_t kRxOnTimer = 102;
+constexpr uint32_t kRetuneTimer = 103;
+
+void probe_at_create(const ksim_host_t *h, Rec &rec)
+{
+    int64_t v = 0;
+    rec.probe["get_phy"] = h->radio_get(h->ctx, KSIM_RADIO_PHY, &v);
+    rec.probe_value["phy"] = v;
+    rec.probe["get_sf"] = h->radio_get(h->ctx, KSIM_RADIO_LORA_SF, &v);
+    rec.probe_value["sf"] = v;
+    rec.probe["get_power"] = h->radio_get(h->ctx, KSIM_RADIO_TX_POWER_CDBM, &v);
+    rec.probe_value["power"] = v;
+    rec.probe["get_nrf_channel"] = h->radio_get(h->ctx, KSIM_RADIO_NRF24_CHANNEL, &v);
+    rec.probe["set_phy"] = h->radio_set(h->ctx, KSIM_RADIO_PHY, KSIM_PHY_NRF24);
+    rec.probe["set_sf_13"] = h->radio_set(h->ctx, KSIM_RADIO_LORA_SF, 13);
+    rec.probe["set_sf_9"] = h->radio_set(h->ctx, KSIM_RADIO_LORA_SF, 9);
+    rec.probe["set_power_25dbm"] = h->radio_set(h->ctx, KSIM_RADIO_TX_POWER_CDBM, 2500);
+    rec.probe["set_power_20dbm"] = h->radio_set(h->ctx, KSIM_RADIO_TX_POWER_CDBM, 2000);
+    rec.probe["set_freq_2g4"] = h->radio_set(h->ctx, KSIM_RADIO_FREQ_HZ, 2400000000);
+    rec.probe["set_nrf_channel"] = h->radio_set(h->ctx, KSIM_RADIO_NRF24_CHANNEL, 5);
+    h->radio_get(h->ctx, KSIM_RADIO_TX_POWER_CDBM, &v);
+    rec.probe_value["power_after"] = v;
+    h->radio_get(h->ctx, KSIM_RADIO_LORA_SF, &v);
+    rec.probe_value["sf_after"] = v;
+}
 
 std::map<std::string, std::string> parse(const char *config)
 {
@@ -86,6 +117,19 @@ void *t_create(const ksim_host_t *host, const char *config)
         host->timer_set(host->ctx, 3, 400);
         host->timer_cancel(host->ctx, 3);
     }
+    if (cfg.count("rx_off_at") != 0) {
+        host->timer_set(host->ctx, kRxOffTimer, std::stoull(cfg["rx_off_at"]));
+    }
+    if (cfg.count("rx_on_at") != 0) {
+        host->timer_set(host->ctx, kRxOnTimer, std::stoull(cfg["rx_on_at"]));
+    }
+    if (cfg.count("retune_at") != 0) {
+        host->timer_set(host->ctx, kRetuneTimer, std::stoull(cfg["retune_at"]));
+    }
+    inst->probe = cfg.count("probe") != 0;
+    if (inst->probe) {
+        probe_at_create(host, g_rec[host->node_id]);
+    }
     return inst;
 }
 
@@ -111,6 +155,15 @@ void t_on_timer(void *p, uint32_t id)
 {
     auto *inst = static_cast<Inst *>(p);
     Rec &rec = g_rec[inst->host.node_id];
+    const ksim_host_t &h = inst->host;
+    if (id == kRxOffTimer || id == kRxOnTimer) {
+        h.radio_set(h.ctx, KSIM_RADIO_RX_ENABLED, id == kRxOnTimer ? 1 : 0);
+        return;
+    }
+    if (id == kRetuneTimer) {
+        h.radio_set(h.ctx, KSIM_RADIO_LORA_SF, 7);
+        return;
+    }
     if (id != kSendTimer) {
         rec.timers.emplace_back(id, inst->host.now_us(inst->host.ctx));
         return;
@@ -120,10 +173,13 @@ void t_on_timer(void *p, uint32_t id)
     if (inst->twice) {
         rec.second_send_result = inst->host.radio_send(inst->host.ctx, data.data(), data.size());
     }
+    if (inst->probe) {
+        rec.probe["set_while_tx"] = h.radio_set(h.ctx, KSIM_RADIO_LORA_SF, 7);
+    }
 }
 
-const ksim_stack_t kTestStack = {KSIM_ABI_VERSION, "test",       t_create,  t_destroy,
-                                 t_on_rx,          t_on_tx_done, t_on_timer};
+const ksim_stack_t kTestStack = {KSIM_ABI_VERSION, "test", "1",          t_create,
+                                 t_destroy,        t_on_rx, t_on_tx_done, t_on_timer};
 
 // ---- scenario helpers ----
 // Path loss 40 dB at 1 m, exponent 3, 14 dBm: RSSI(d) = -26 - 30 log10(d).
@@ -146,7 +202,7 @@ NodeSpec node(uint32_t id, double x, const std::string &config = "", int sf = 7)
     n.pos.x = x;
     n.stack = "test";
     n.config = config;
-    n.radio.sf = sf;
+    n.radio.lora.sf = sf;
     return n;
 }
 
@@ -264,7 +320,7 @@ TEST_F(Sim, DifferentFrequencyDoesNotInterfere)
 {
     Scenario s = base();
     NodeSpec other = node(3, 100, "send_at=1000");
-    other.radio.freq_hz = 868300000;
+    other.radio.lora.freq_hz = 868300000;
     s.nodes = {node(1, -100, "send_at=1000"), node(2, 0), other};
     run(s);
     ASSERT_EQ(g_rec[2].rx.size(), 1u);
@@ -362,6 +418,106 @@ TEST_F(Sim, TraceLinesAreJson)
     std::ostringstream trace;
     run(s, &trace);
     EXPECT_EQ(trace.str(),
+              "{\"t\":0,\"ev\":\"meta\",\"ksim\":\"0.1.0\",\"abi\":2,\"phy\":{\"lora\":\"1\"},"
+              "\"stack\":{\"test\":\"1\"},\"device\":{}}\n"
               "{\"t\":1000,\"ev\":\"tx\",\"node\":1,\"len\":10,\"airtime\":41216}\n"
               "{\"t\":42216,\"ev\":\"rx\",\"node\":2,\"from\":1,\"rssi\":-86.0,\"snr\":31.03}\n");
+}
+
+TEST_F(Sim, ReceiverOffDuringFrameMissesIt)
+{
+    Scenario s = base();
+    // frame 1 arrives 1000..42216; node 2 switches RX off and on again in the middle
+    s.nodes = {node(1, 0, "send_at=1000"), node(2, 100, "rx_off_at=10000;rx_on_at=20000")};
+    const Summary sum = run(s);
+    EXPECT_TRUE(g_rec[2].rx.empty());
+    EXPECT_EQ(sum.lost_rx_off, 1u);
+    EXPECT_EQ(sum.nodes[1].lost_rx_off, 1u);
+}
+
+TEST_F(Sim, ReceiverBackOnBeforeFrameStartsHearsIt)
+{
+    Scenario s = base();
+    s.nodes = {node(1, 0, "send_at=1000"), node(2, 100, "rx_off_at=100;rx_on_at=1000")};
+    run(s);
+    EXPECT_EQ(g_rec[2].rx.size(), 1u);
+}
+
+TEST_F(Sim, ReceiverOffAtTheEndMissesIt)
+{
+    Scenario s = base();
+    s.nodes = {node(1, 0, "send_at=1000"), node(2, 100, "rx_off_at=30000")};
+    const Summary sum = run(s);
+    EXPECT_TRUE(g_rec[2].rx.empty());
+    EXPECT_EQ(sum.lost_rx_off, 1u);
+}
+
+TEST_F(Sim, RetuningDuringFrameMissesIt)
+{
+    Scenario s = base();
+    s.nodes = {node(1, 0, "send_at=1000"), node(2, 100, "retune_at=10000")};
+    const Summary sum = run(s);
+    EXPECT_TRUE(g_rec[2].rx.empty());
+    EXPECT_EQ(sum.lost_rx_off, 1u);
+}
+
+TEST_F(Sim, RadioGetSetRespectPhyAndDevice)
+{
+    Scenario s = base();
+    NodeSpec n = node(1, 0, "probe=1;send_at=1000");
+    n.device = *DeviceRegistry::builtin().find("esp32-sx1276"); // 2..20 dBm, 137-1020 MHz
+    s.nodes = {n};
+    run(s);
+
+    const Rec &r = g_rec[1];
+    EXPECT_EQ(r.probe.at("get_phy"), KSIM_OK);
+    EXPECT_EQ(r.probe_value.at("phy"), KSIM_PHY_LORA);
+    EXPECT_EQ(r.probe_value.at("sf"), 7);
+    EXPECT_EQ(r.probe_value.at("power"), 1400);
+    EXPECT_EQ(r.probe.at("get_nrf_channel"), KSIM_ERR_UNSUPPORTED);
+    EXPECT_EQ(r.probe.at("set_phy"), KSIM_ERR_UNSUPPORTED);
+    EXPECT_EQ(r.probe.at("set_sf_13"), KSIM_ERR_INVALID);
+    EXPECT_EQ(r.probe.at("set_sf_9"), KSIM_OK);
+    EXPECT_EQ(r.probe.at("set_power_25dbm"), KSIM_ERR_INVALID); // device limit
+    EXPECT_EQ(r.probe.at("set_power_20dbm"), KSIM_OK);
+    EXPECT_EQ(r.probe.at("set_freq_2g4"), KSIM_ERR_INVALID); // outside the device's band
+    EXPECT_EQ(r.probe.at("set_nrf_channel"), KSIM_ERR_UNSUPPORTED);
+    EXPECT_EQ(r.probe_value.at("power_after"), 2000);
+    EXPECT_EQ(r.probe_value.at("sf_after"), 9);
+    EXPECT_EQ(r.probe.at("set_while_tx"), KSIM_ERR_BUSY);
+}
+
+TEST_F(Sim, TxPowerChangesTheLinkBudget)
+{
+    Scenario s = base();
+    NodeSpec n = node(1, 0, "send_at=1000");
+    n.radio.tx_power_dbm = 4.0; // 10 dB less than the default
+    s.nodes = {n, node(2, 100)};
+    run(s);
+    ASSERT_EQ(g_rec[2].rx.size(), 1u);
+    EXPECT_DOUBLE_EQ(g_rec[2].rx[0].rssi, -96.0);
+}
+
+TEST_F(Sim, DifferentPhysNeverInteract)
+{
+    Scenario s = base();
+    NodeSpec nrf = node(3, 100, "send_at=1000");
+    nrf.radio = RadioConfig{};
+    nrf.radio.type = PhyType::Nrf24;
+    nrf.radio.tx_power_dbm = 0.0;
+    s.nodes = {node(1, -100, "send_at=1000"), node(2, 0), nrf};
+    const Summary sum = run(s);
+    ASSERT_EQ(g_rec[2].rx.size(), 1u); // the LoRa frame survives the nRF24 one
+    EXPECT_EQ(sum.lost_collision, 0u);
+    EXPECT_EQ(sum.versions.at("phy:nrf24"), "1");
+    EXPECT_EQ(sum.versions.at("phy:lora"), "1");
+}
+
+TEST_F(Sim, ReceiverOffForTheWholeFrameIsSilent)
+{
+    Scenario s = base();
+    s.nodes = {node(1, 0, "send_at=1000"), node(2, 100, "rx_off_at=500;rx_on_at=50000")};
+    const Summary sum = run(s);
+    EXPECT_TRUE(g_rec[2].rx.empty());
+    EXPECT_EQ(sum.lost_rx_off, 0u); // not listening is not a loss
 }

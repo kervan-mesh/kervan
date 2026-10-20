@@ -18,6 +18,11 @@
 
 namespace ksim {
 
+const char *version()
+{
+    return KSIM_VERSION;
+}
+
 namespace {
 
 constexpr uint64_t kTagNode = 0x6E6F6465u;   // per-node random stream
@@ -27,11 +32,6 @@ constexpr uint64_t kTagShadow = 0x73686164u; // per-link shadowing
 double round_db(double v)
 {
     return std::round(v * 100.0) / 100.0;
-}
-
-bool same_channel(const LoraParams &a, const LoraParams &b)
-{
-    return a.freq_hz == b.freq_hz && a.sf == b.sf && a.bw_hz == b.bw_hz;
 }
 
 bool overlaps(Time s1, Time e1, Time s2, Time e2)
@@ -45,6 +45,10 @@ struct Simulator::Impl {
     struct Node {
         Impl *sim = nullptr;
         NodeSpec spec;
+        RadioConfig radio; // current settings (stacks may change them)
+        bool rx_on = true;
+        Time rx_since = 0;  // receiver on and tuned unchanged since this time
+        Time rx_off_at = 0; // when the receiver was last switched off
         ksim_host_t host{};
         const ksim_stack_t *stack = nullptr;
         void *inst = nullptr;
@@ -60,7 +64,7 @@ struct Simulator::Impl {
         size_t sender = 0;
         Time start = 0;
         Time end = 0;
-        LoraParams params;
+        RadioConfig radio; // sender's settings at the start
         std::vector<uint8_t> data;
     };
 
@@ -109,17 +113,18 @@ struct Simulator::Impl {
         return r.normal() * scn.path_loss.shadowing_sigma_db;
     }
 
-    double rssi(const Node &from, const Node &to) const
+    double rssi(const NodeSpec &from, const RadioConfig &tx, const NodeSpec &to) const
     {
-        const double d = distance_m(from.spec.pos, to.spec.pos);
-        const double loss = path_loss_db(scn.path_loss, d, from.spec.radio.freq_hz) +
-                            shadowing_db(from.spec.id, to.spec.id);
-        return round_db(from.spec.radio.tx_power_dbm - loss);
+        const double d = distance_m(from.pos, to.pos);
+        const double loss = path_loss_db(scn.path_loss, d, phy_for(tx.type).carrier_hz(tx)) +
+                            shadowing_db(from.id, to.id);
+        return round_db(tx.tx_power_dbm - loss);
     }
 
     int start_tx(Node &n, const uint8_t *buf, size_t len)
     {
-        if (buf == nullptr || len == 0 || len > scn.mtu) {
+        const Phy &phy = phy_for(n.radio.type);
+        if (buf == nullptr || len > scn.mtu || !phy.frame_len_ok(len)) {
             return KSIM_ERR_INVALID;
         }
         if (n.transmitting) {
@@ -129,8 +134,8 @@ struct Simulator::Impl {
         tx.id = next_tx_id++;
         tx.sender = index_of.at(n.spec.id);
         tx.start = queue.now();
-        tx.end = tx.start + lora_airtime_us(n.spec.radio, len);
-        tx.params = n.spec.radio;
+        tx.end = tx.start + phy.airtime_us(n.radio, len);
+        tx.radio = n.radio;
         tx.data.assign(buf, buf + len);
 
         const Time airtime = tx.end - tx.start;
@@ -154,51 +159,61 @@ struct Simulator::Impl {
     {
         Node &sender = *nodes[tx.sender];
         sender.transmitting = false;
+        const Phy &phy = phy_for(tx.radio.type);
 
         for (size_t r = 0; r < nodes.size(); r++) {
             if (r == tx.sender) {
                 continue;
             }
             Node &rx = *nodes[r];
-            if (!same_channel(rx.spec.radio, tx.params)) {
+            if (rx.radio.type != tx.radio.type || !phy.can_receive(rx.radio, tx.radio)) {
                 continue;
             }
-            const double level = rssi(sender, rx);
-            const double snr =
-                round_db(level - noise_floor_dbm(tx.params.bw_hz, scn.noise_figure_db));
-            if (snr < lora_snr_threshold_db(tx.params.sf)) {
+            const double level = rssi(sender.spec, tx.radio, rx.spec);
+            const double snr = round_db(level - phy.noise_floor_dbm(tx.radio, scn.noise_figure_db));
+            if (!phy.decodable(tx.radio, level, snr)) {
                 continue; // below sensitivity: the receiver never notices
             }
 
-            const char *reason = nullptr;
+            bool half_duplex = false;
+            bool collision = false;
+            const double capture = phy.capture_db(tx.radio, scn.capture_threshold_db);
             for (const Transmission &other : recent) {
-                if (other.id == tx.id ||
-                    !overlaps(other.start, other.end, tx.start, tx.end)) {
+                if (other.id == tx.id || !overlaps(other.start, other.end, tx.start, tx.end)) {
                     continue;
                 }
                 if (other.sender == r) {
-                    reason = "half_duplex";
-                    break;
-                }
-                if (same_channel(other.params, tx.params) &&
-                    rssi(*nodes[other.sender], rx) > level - scn.capture_threshold_db) {
-                    reason = "collision";
-                    break;
+                    half_duplex = true;
+                } else if (other.radio.type == tx.radio.type &&
+                           phy.interferes(tx.radio, other.radio) &&
+                           rssi(nodes[other.sender]->spec, other.radio, rx.spec) > level - capture) {
+                    collision = true;
                 }
             }
+            const bool listening = rx.rx_on && rx.rx_since <= tx.start;
+            if (!half_duplex && !rx.rx_on && rx.rx_off_at <= tx.start) {
+                continue; // receiver off for the whole frame: not listening, not a loss
+            }
 
+            const char *reason = nullptr;
+            if (half_duplex) {
+                reason = "half_duplex";
+                rx.stats.lost_half_duplex++;
+                sum.lost_half_duplex++;
+            } else if (!listening) {
+                reason = "rx_off";
+                rx.stats.lost_rx_off++;
+                sum.lost_rx_off++;
+            } else if (collision) {
+                reason = "collision";
+                rx.stats.lost_collision++;
+                sum.lost_collision++;
+            }
             if (reason != nullptr) {
                 auto j = event("lost", rx);
                 j["from"] = sender.spec.id;
                 j["reason"] = reason;
                 emit(j);
-                if (reason[0] == 'h') {
-                    rx.stats.lost_half_duplex++;
-                    sum.lost_half_duplex++;
-                } else {
-                    rx.stats.lost_collision++;
-                    sum.lost_collision++;
-                }
                 continue;
             }
 
@@ -219,6 +234,100 @@ struct Simulator::Impl {
         while (!recent.empty() && recent.front().end + max_airtime < now) {
             recent.pop_front();
         }
+    }
+
+    int radio_get(const Node &n, uint32_t param, int64_t *value) const
+    {
+        if (value == nullptr) {
+            return KSIM_ERR_INVALID;
+        }
+        switch (param) {
+        case KSIM_RADIO_PHY:
+            *value = static_cast<int64_t>(n.radio.type);
+            return KSIM_OK;
+        case KSIM_RADIO_RX_ENABLED:
+            *value = n.rx_on ? 1 : 0;
+            return KSIM_OK;
+        case KSIM_RADIO_TX_POWER_CDBM:
+            *value = static_cast<int64_t>(std::llround(n.radio.tx_power_dbm * 100.0));
+            return KSIM_OK;
+        default:
+            return phy_for(n.radio.type).get(n.radio, param, value);
+        }
+    }
+
+    int radio_set(Node &n, uint32_t param, int64_t value)
+    {
+        if (param == KSIM_RADIO_PHY) {
+            return KSIM_ERR_UNSUPPORTED;
+        }
+        if (n.transmitting) {
+            return KSIM_ERR_BUSY;
+        }
+        if (param == KSIM_RADIO_RX_ENABLED) {
+            const bool on = value != 0;
+            if (on && !n.rx_on) {
+                n.rx_since = queue.now();
+            } else if (!on && n.rx_on) {
+                n.rx_off_at = queue.now();
+            }
+            n.rx_on = on;
+            return KSIM_OK;
+        }
+
+        RadioConfig next = n.radio;
+        if (param == KSIM_RADIO_TX_POWER_CDBM) {
+            next.tx_power_dbm = static_cast<double>(value) / 100.0;
+        } else {
+            const int r = phy_for(next.type).set(next, param, value);
+            if (r != KSIM_OK) {
+                return r;
+            }
+        }
+        if (n.spec.device && !n.spec.device->check(next).empty()) {
+            return KSIM_ERR_INVALID;
+        }
+        n.radio = next;
+        n.rx_since = queue.now(); // retuning loses whatever was arriving
+        return KSIM_OK;
+    }
+
+    void emit_meta()
+    {
+        sum.versions["ksim"] = version();
+        nlohmann::ordered_json j;
+        j["t"] = 0;
+        j["ev"] = "meta";
+        j["ksim"] = version();
+        j["abi"] = KSIM_ABI_VERSION;
+        nlohmann::ordered_json phys = nlohmann::ordered_json::object();
+        nlohmann::ordered_json stks = nlohmann::ordered_json::object();
+        nlohmann::ordered_json devs = nlohmann::ordered_json::object();
+        std::map<std::string, std::string> p, s, d;
+        for (const auto &n : nodes) {
+            const Phy &phy = phy_for(n->radio.type);
+            p[phy.name()] = std::to_string(phy.version());
+            s[n->stack->name] = n->stack->version != nullptr ? n->stack->version : "";
+            if (n->spec.device) {
+                d[n->spec.device->name] = std::to_string(n->spec.device->version);
+            }
+        }
+        for (const auto &[k, v] : p) {
+            phys[k] = v;
+            sum.versions["phy:" + k] = v;
+        }
+        for (const auto &[k, v] : s) {
+            stks[k] = v;
+            sum.versions["stack:" + k] = v;
+        }
+        for (const auto &[k, v] : d) {
+            devs[k] = v;
+            sum.versions["device:" + k] = v;
+        }
+        j["phy"] = phys;
+        j["stack"] = stks;
+        j["device"] = devs;
+        emit(j);
     }
 
     // ---- ksim_host_t implementation; ctx is the Node ----
@@ -261,18 +370,32 @@ struct Simulator::Impl {
         j["detail"] = detail != nullptr ? detail : "";
         n.sim->emit(j);
     }
+
+    static int h_radio_get(void *ctx, uint32_t param, int64_t *value)
+    {
+        return node(ctx).sim->radio_get(node(ctx), param, value);
+    }
+
+    static int h_radio_set(void *ctx, uint32_t param, int64_t value)
+    {
+        return node(ctx).sim->radio_set(node(ctx), param, value);
+    }
 };
 
 Simulator::Simulator(Scenario scenario) : impl_(std::make_unique<Impl>())
 {
     std::set<uint32_t> ids;
     for (const NodeSpec &spec : scenario.nodes) {
+        const std::string where = "node " + std::to_string(spec.id) + ": ";
         if (!ids.insert(spec.id).second) {
             throw std::invalid_argument("duplicate node id " + std::to_string(spec.id));
         }
-        const std::string err = lora_validate(spec.radio);
+        std::string err = phy_for(spec.radio.type).validate(spec.radio);
+        if (err.empty() && spec.device) {
+            err = spec.device->check(spec.radio);
+        }
         if (!err.empty()) {
-            throw std::invalid_argument("node " + std::to_string(spec.id) + ": " + err);
+            throw std::invalid_argument(where + err);
         }
     }
     if (scenario.mtu == 0 || scenario.mtu > 255) {
@@ -323,6 +446,7 @@ Summary Simulator::run()
         auto n = std::make_unique<Impl::Node>();
         n->sim = &s;
         n->spec = spec;
+        n->radio = spec.radio;
         n->stack = it->second;
         n->rng = Rng(s.scn.seed, mix(kTagNode, spec.id));
         n->stats.id = spec.id;
@@ -335,9 +459,12 @@ Summary Simulator::run()
         n->host.timer_cancel = Impl::h_timer_cancel;
         n->host.random = Impl::h_random;
         n->host.trace = Impl::h_trace;
+        n->host.radio_get = Impl::h_radio_get;
+        n->host.radio_set = Impl::h_radio_set;
         s.index_of[spec.id] = s.nodes.size();
         s.nodes.push_back(std::move(n));
     }
+    s.emit_meta();
     for (auto &n : s.nodes) {
         n->inst = n->stack->create(&n->host, n->spec.config.c_str());
         if (n->inst == nullptr) {
@@ -370,11 +497,8 @@ double Simulator::rssi_dbm(uint32_t from_id, uint32_t to_id) const
         }
         throw std::invalid_argument("unknown node id " + std::to_string(id));
     };
-    Impl::Node a;
-    Impl::Node b;
-    a.spec = find(from_id);
-    b.spec = find(to_id);
-    return s.rssi(a, b);
+    const NodeSpec &a = find(from_id);
+    return s.rssi(a, a.radio, find(to_id));
 }
 
 } // namespace ksim

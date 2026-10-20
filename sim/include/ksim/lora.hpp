@@ -21,7 +21,6 @@ struct LoraParams {
     int preamble = 8;        // symbols
     bool crc = true;
     bool implicit_header = false;
-    double tx_power_dbm = 14.0;
 };
 
 // Empty string if valid, otherwise what is wrong.

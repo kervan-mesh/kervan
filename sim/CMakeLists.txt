@@ -16,6 +16,18 @@ FetchContent_Declare(nlohmann_json
 FetchContent_MakeAvailable(nlohmann_json)
 kervan_as_system(nlohmann_json)
 
+# Device profiles (sim/devices/*.json) are compiled into the binary; ksim also loads more at
+# runtime with --devices DIR.
+file(GLOB KSIM_DEVICE_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/devices/*.json)
+list(SORT KSIM_DEVICE_FILES)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${KSIM_DEVICE_FILES})
+set(KSIM_DEVICES_CPP "")
+foreach(file ${KSIM_DEVICE_FILES})
+    file(READ ${file} content)
+    string(APPEND KSIM_DEVICES_CPP "    R\"ksim_json(${content})ksim_json\",\n")
+endforeach()
+configure_file(src/devices_builtin.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/devices_builtin.cpp @ONLY)
+
 # C ABI only: what a stack needs to plug in. No C++ and no Kervan dependency.
 add_library(ksim_api INTERFACE)
 target_include_directories(ksim_api INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -23,20 +35,31 @@ target_include_directories(ksim_api INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/includ
 # The simulator. Must not depend on Kervan core.
 add_library(ksim_core
     src/channel.cpp
+    src/device.cpp
+    src/json_util.cpp
     src/lora.cpp
+    src/nrf24.cpp
+    src/phy.cpp
     src/scenario.cpp
     src/simulator.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/devices_builtin.cpp
 )
 target_link_libraries(ksim_core PUBLIC ksim_api PRIVATE nlohmann_json::nlohmann_json kervan_warnings)
 target_compile_features(ksim_core PUBLIC cxx_std_20)
+target_compile_definitions(ksim_core PRIVATE KSIM_VERSION="${PROJECT_VERSION}")
 
 # Built-in stacks.
 add_library(ksim_stack_kervan stacks/kervan/kervan_stack.c)
 target_include_directories(ksim_stack_kervan PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/stacks/kervan/include)
 target_link_libraries(ksim_stack_kervan PUBLIC ksim_api PRIVATE kervan::core kervan_warnings)
 
+add_library(ksim_stack_nrf24_esb stacks/nrf24_esb/esb_stack.c)
+target_include_directories(ksim_stack_nrf24_esb PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/stacks/nrf24_esb/include)
+target_link_libraries(ksim_stack_nrf24_esb PUBLIC ksim_api PRIVATE kervan_warnings)
+
 add_executable(ksim src/main.cpp)
-target_link_libraries(ksim PRIVATE ksim_core ksim_stack_kervan kervan_warnings)
+target_link_libraries(ksim PRIVATE ksim_core ksim_stack_kervan ksim_stack_nrf24_esb kervan_warnings)
 
 if(KERVAN_BUILD_TESTS)
     add_subdirectory(tests)

@@ -10,20 +10,26 @@
 #include <iosfwd>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "ksim/channel.hpp"
+#include "ksim/device.hpp"
 #include "ksim/engine.hpp"
-#include "ksim/lora.hpp"
+#include "ksim/phy.hpp"
 #include "ksim/stack.h"
 
 namespace ksim {
 
+// Simulator version, recorded in every trace.
+const char *version();
+
 struct NodeSpec {
     uint32_t id = 0;
     Vec3 pos;
-    LoraParams radio;
+    RadioConfig radio;
+    std::optional<DeviceProfile> device; // limits radio settings, also at runtime
     std::string stack;
     std::string config; // "key=value;key=value", handed to the stack
 };
@@ -32,9 +38,9 @@ struct Scenario {
     uint64_t seed = 1;
     Time duration_us = 60'000'000;
     size_t mtu = 255;
-    LoraParams radio; // default for nodes
+    RadioConfig radio; // default for nodes without a device
     PathLoss path_loss;
-    double capture_threshold_db = 6.0;
+    double capture_threshold_db = 6.0; // LoRa; nRF24 uses its datasheet C/I
     double noise_figure_db = 6.0;
     double duty_cycle_limit = 0.01;
     std::vector<NodeSpec> nodes;
@@ -47,6 +53,7 @@ struct NodeStats {
     uint64_t rx_ok = 0;
     uint64_t lost_collision = 0;
     uint64_t lost_half_duplex = 0;
+    uint64_t lost_rx_off = 0; // receiver off or retuned while the frame arrived
 };
 
 struct Summary {
@@ -55,9 +62,11 @@ struct Summary {
     uint64_t rx_ok = 0;
     uint64_t lost_collision = 0;
     uint64_t lost_half_duplex = 0;
+    uint64_t lost_rx_off = 0;
     std::map<std::string, uint64_t> app_events; // from ksim_host_t::trace
-    std::vector<NodeStats> nodes;               // scenario order
-    uint64_t trace_hash = 0;                    // FNV-1a over every trace line
+    std::map<std::string, std::string> versions; // "ksim", "phy:lora", "stack:kervan", ...
+    std::vector<NodeStats> nodes;                // scenario order
+    uint64_t trace_hash = 0;                     // FNV-1a over every trace line
 };
 
 class Simulator {
@@ -78,7 +87,7 @@ public:
     // Throws std::runtime_error if a stack is unknown or rejects its config.
     Summary run();
 
-    // Received signal strength from one node at another (0.01 dB resolution).
+    // Received signal strength from one node at another with their scenario radios (0.01 dB).
     double rssi_dbm(uint32_t from_id, uint32_t to_id) const;
 
 private:

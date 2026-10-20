@@ -195,11 +195,18 @@ static void *ks_create(const ksim_host_t *host, const char *config)
     kstack_t *s = (kstack_t *)calloc(1, sizeof(kstack_t));
     kv_node_config_t cfg;
     kv_pal_t pal;
+    int64_t phy = 0;
 
     if (s == NULL) {
         return NULL;
     }
     s->host = *host;
+    /* Kervan frames go straight onto a LoRa radio; other radios have their own framing */
+    if (host->radio_get(host->ctx, KSIM_RADIO_PHY, &phy) != KSIM_OK || phy != KSIM_PHY_LORA) {
+        host->trace(host->ctx, "kv_error", "the kervan stack needs a lora radio");
+        free(s);
+        return NULL;
+    }
     s->send_to = KV_ADDR_BROADCAST;
     s->len = 10;
 
@@ -272,7 +279,7 @@ static void ks_on_timer(void *inst, uint32_t timer_id)
 
 const ksim_stack_t *ksim_stack_kervan(void)
 {
-    static const ksim_stack_t stack = {KSIM_ABI_VERSION, "kervan", ks_create,  ks_destroy,
-                                       ks_on_rx,         ks_on_tx_done, ks_on_timer};
+    static const ksim_stack_t stack = {KSIM_ABI_VERSION, "kervan",      "1",        ks_create,
+                                       ks_destroy,       ks_on_rx,      ks_on_tx_done, ks_on_timer};
     return &stack;
 }

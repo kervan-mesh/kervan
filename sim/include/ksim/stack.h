@@ -16,14 +16,37 @@ extern "C" {
 /*
  * Stack adapter interface: how a protocol stack plugs into the simulator.
  * Plain C so stacks built with any compiler (or loaded from a DLL) fit. See docs/simulator.md.
+ *
+ * Version history:
+ *   1  initial
+ *   2  radio_get/radio_set, ksim_stack_t::version
  */
 
-#define KSIM_ABI_VERSION 1u
+#define KSIM_ABI_VERSION 2u
 
-/* radio_send results */
+/* Results */
 #define KSIM_OK 0
-#define KSIM_ERR_BUSY (-1)    /* already transmitting */
-#define KSIM_ERR_INVALID (-2) /* empty frame or longer than mtu */
+#define KSIM_ERR_BUSY (-1)        /* already transmitting */
+#define KSIM_ERR_INVALID (-2)     /* bad frame length or parameter value */
+#define KSIM_ERR_UNSUPPORTED (-3) /* parameter does not exist for this radio, or is read-only */
+
+/* Radio types (KSIM_RADIO_PHY) */
+#define KSIM_PHY_LORA 1
+#define KSIM_PHY_NRF24 2
+
+/*
+ * Radio parameters for radio_get/radio_set. Changing one while transmitting returns
+ * KSIM_ERR_BUSY; changing one while a frame is arriving makes the receiver miss that frame.
+ * Values are validated against the PHY and the node's device profile.
+ */
+#define KSIM_RADIO_PHY 1            /* read-only: KSIM_PHY_* */
+#define KSIM_RADIO_RX_ENABLED 2     /* 0/1; a frame is heard only if RX was on for all of it */
+#define KSIM_RADIO_TX_POWER_CDBM 3  /* transmit power in 0.01 dBm */
+#define KSIM_RADIO_FREQ_HZ 10       /* LoRa */
+#define KSIM_RADIO_LORA_SF 11       /* LoRa: 7..12 */
+#define KSIM_RADIO_LORA_BW_HZ 12    /* LoRa: 125000, 250000, 500000 */
+#define KSIM_RADIO_NRF24_CHANNEL 20 /* nRF24: 0..125 */
+#define KSIM_RADIO_NRF24_RATE 21    /* nRF24: 250000, 1000000, 2000000 bit/s */
 
 /* What the simulator offers a stack instance. Valid until destroy. */
 typedef struct {
@@ -40,6 +63,8 @@ typedef struct {
     uint32_t (*random)(void *ctx);
     /* Report an application-level event (counted in the summary, written to the trace). */
     void (*trace)(void *ctx, const char *event, const char *detail);
+    int (*radio_get)(void *ctx, uint32_t param, int64_t *value);
+    int (*radio_set)(void *ctx, uint32_t param, int64_t value);
 } ksim_host_t;
 
 typedef struct {
@@ -51,6 +76,7 @@ typedef struct {
 typedef struct {
     uint32_t abi_version; /* KSIM_ABI_VERSION */
     const char *name;     /* referenced by scenarios, e.g. "kervan" */
+    const char *version;  /* model version, recorded in every trace, e.g. "1" */
 
     /* config is "key=value;key=value" (possibly empty). Return NULL to reject it. */
     void *(*create)(const ksim_host_t *host, const char *config);

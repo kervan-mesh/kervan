@@ -1,34 +1,42 @@
 # ksim — the Kervan simulator
 
-Status: **phase 2a** — engine, LoRa channel model, Kervan adapter, CLI.
+Status: **phase 2b** — engine, LoRa and nRF24 PHYs, device profiles, Kervan and nRF24 ESB stacks,
+CLI.
 
 ksim is a general-purpose discrete-event simulator for low-power wireless networks. Kervan is one
-protocol it can run; other stacks (nRF24L01 Enhanced ShockBurst, LoRaWAN, ...) plug into the same
-interface. The simulator itself never depends on Kervan code.
+protocol it can run; other stacks plug into the same interface. The simulator itself never depends
+on Kervan code. Everything is modular and **versioned**: PHY models, stacks and device profiles each
+carry a version that is recorded in every trace.
 
 ```
-┌──────────────────────────────────────────────┐
-│  Engine: virtual time (µs) · event queue · RNG │
-├──────────────────────────────────────────────┤
-│  Channel / PHY models: LoRa (first) …         │
-│  bytes + airtime + signal strength only       │
-├──────────────────────────────────────────────┤
-│  Stack adapter interface (C ABI, ksim/stack.h)│
-├───────────┬───────────┬──────────────────────┤
-│  kervan   │ nrf24-esb │ …                    │
-└───────────┴───────────┴──────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  Engine: virtual time (µs) · event queue · RNG        │
+├──────────────────────────────────────────────────────┤
+│  Shared channel: positions · path loss · shadowing ·  │
+│  half-duplex · receiver on/off                        │
+├───────────────────────┬──────────────────────────────┤
+│  PHY: lora (v1)       │  PHY: nrf24 (v1)      │ …    │
+├───────────────────────┴──────────────────────────────┤
+│  Device profiles: board = MCU + radio + limits (JSON) │
+├──────────────────────────────────────────────────────┤
+│  Stack adapter interface (C ABI v2, ksim/stack.h)     │
+├─────────────┬──────────────────┬─────────────────────┤
+│  kervan v1  │  nrf24-esb v1    │ …                   │
+└─────────────┴──────────────────┴─────────────────────┘
 ```
 
 ## Running
 
 ```sh
-ksim run sim/scenarios/line_5.json [--seed N] [--duration S] [--trace out.jsonl]
-ksim stacks        # list built-in stacks
+ksim run sim/scenarios/line_5.json [--seed N] [--duration S] [--trace out.jsonl] [--devices DIR]
+ksim stacks                  # protocol stacks and their versions
+ksim devices [--devices DIR] # device profiles
+ksim version
 ```
 
-The summary shows radio statistics (frames sent, received, lost and why), application events
-reported by the stacks, per-node airtime and duty cycle, and a **trace hash**. Equal hashes mean
-identical runs.
+The summary shows the model versions in use, radio statistics (frames sent, received, lost and why),
+application events reported by the stacks, per-node airtime and duty cycle, and a **trace hash**.
+Equal hashes mean identical runs.
 
 ## Engine
 
@@ -40,37 +48,83 @@ identical runs.
 - **Cross-platform determinism:** the same seed must give the same trace on Windows, Linux and
   macOS. ksim therefore uses its own generator (xoshiro256\*\*) and distributions instead of
   `<random>` (whose distributions differ between standard libraries), and rounds signal levels to
-  0.01 dB before comparing them. A golden-hash test checks this on all CI platforms.
+  0.01 dB before comparing them. Golden-hash tests check this on all CI platforms.
 
-## LoRa channel model
+## Shared channel rules
+
+| Part | Model |
+|---|---|
+| Path loss | Log-distance: `PL(d) = PL(d0) + 10·n·log10(d/d0) + Xσ`. `PL(d0)` defaults to free-space loss at the frame's carrier frequency. |
+| Shadowing | `Xσ`: normal, fixed per link for the whole run, same in both directions |
+| Half-duplex | A node that transmits at any time during a frame does not receive it (`half_duplex`) |
+| Receiver on/off | Stacks switch the receiver with `KSIM_RADIO_RX_ENABLED`. A frame is received only if the receiver was on, and not retuned, for all of it. On for only part of it → lost (`rx_off`); off for all of it → not listening, not a loss. |
+| PHY types | Radios of different types never interact |
+| Duty cycle | Measured and reported per node (total airtime / duration); a warning is shown above `duty_cycle_limit`. Not enforced — that is the protocol's job. |
+
+Frames below a receiver's sensitivity are neither delivered nor traced.
+
+## PHY models
+
+A PHY (`sim/src/phy.cpp`, interface in `ksim/phy.hpp`) decides airtime, carrier, whether a receiver
+can demodulate a frame, whether two frames interfere and the capture threshold.
+
+### `lora` v1
 
 | Part | Model |
 |---|---|
 | Airtime | Semtech AN1200.13 formula (SF7–12, BW 125/250/500 kHz, CR 4/5–4/8, LDRO automatic when a symbol exceeds 16 ms) |
-| Path loss | Log-distance: `PL(d) = PL(d0) + 10·n·log10(d/d0) + Xσ`. `PL(d0)` defaults to free-space loss at the carrier frequency. |
-| Shadowing | `Xσ`: normal, fixed per link for the whole run, same in both directions |
 | Noise floor | `−174 + 10·log10(BW) + NF` dBm, NF = 6 dB |
-| Reception | Frame is received if `SNR ≥` the SF's demodulation floor (SF7 −7.5 dB … SF12 −20 dB, 2.5 dB steps) and the receiver listens on the same frequency, SF and bandwidth |
+| Reception | `SNR ≥` the SF's demodulation floor (SF7 −7.5 dB … SF12 −20 dB, 2.5 dB steps); receiver on the same frequency, SF and bandwidth |
 | Collisions | Only frames on the same frequency **and** SF interfere (different SFs are treated as orthogonal). A frame is lost if an overlapping interferer arrives less than `capture_threshold_db` (default 6 dB) below it. |
-| Half-duplex | A node that transmits at any time during a frame does not receive it |
-| Duty cycle | Measured and reported per node (total airtime / duration); a warning is shown above `duty_cycle_limit`. Not enforced — that is the protocol's job. |
 
-Known simplifications, to be refined when measurements call for it: hard SNR threshold instead of a
-PER curve; capture ignores timing (a later, stronger frame can capture the receiver at any point);
-no inter-SF interference; duty cycle is not measured over sliding one-hour windows.
+Known simplifications: hard SNR threshold instead of a PER curve; capture ignores timing; no
+inter-SF interference; duty cycle is not measured over sliding one-hour windows.
 
-## Stack adapter interface (C ABI)
+### `nrf24` v1
+
+nRF24L01+ at 2.4 GHz: see [nrf24-esb.md](nrf24-esb.md) (channels, data rates, sensitivity, C/I,
+occupied bandwidth, frame layout).
+
+## Device profiles
+
+A device profile describes a board — MCU plus radio — with the radio's defaults and hardware
+limits. Profiles are JSON files: the ones in [`sim/devices/`](../sim/devices/) are compiled into
+ksim, and `--devices DIR` loads more (a profile with the same name replaces the built-in one).
+Adding a board needs no code.
+
+```json
+{
+  "name": "esp32-sx1276",
+  "version": 1,
+  "description": "ESP32 with a Semtech SX1276 LoRa transceiver on PA_BOOST",
+  "mcu": "ESP32",
+  "radio": { "type": "lora", "freq_hz": 868100000, "sf": 7, "bw_hz": 125000, "tx_power_dbm": 14 },
+  "limits": {
+    "tx_power_dbm": { "min": 2, "max": 20 },
+    "freq_hz": { "min": 137000000, "max": 1020000000 }
+  }
+}
+```
+
+`limits.tx_power_dbm` is either a range or a list of discrete levels (`[-18, -12, -6, 0]` for the
+nRF24L01+). Limits are enforced when the scenario is loaded and when a stack changes the radio at
+run time. Bump `version` whenever a change could alter results.
+
+## Stack adapter interface (C ABI v2)
 
 Declared in [`sim/include/ksim/stack.h`](../sim/include/ksim/stack.h). A stack provides
-`ksim_stack_t` (create/destroy an instance per node, `on_rx`, `on_tx_done`, `on_timer`). The
-simulator provides `ksim_host_t` (time, `radio_send`, timers, random numbers, `trace`).
+`ksim_stack_t` (name, version, create/destroy an instance per node, `on_rx`, `on_tx_done`,
+`on_timer`). The simulator provides `ksim_host_t` (time, `radio_send`, timers, random numbers,
+`trace`, `radio_get`/`radio_set`).
 
 - C, not C++: a stack compiled by another compiler, or living in a DLL, still fits.
 - Timers instead of a deadline query: they map to every stack we know of (Kervan's
   `kv_node_next_deadline` is translated by its adapter).
-- `trace` lets stacks report application events ("message delivered"), which tests and the summary
-  count.
-- `abi_version` guards future changes (radio reconfiguration comes with phase 2b).
+- `radio_get`/`radio_set` with `KSIM_RADIO_*` parameters: PHY type (read-only), receiver on/off,
+  TX power, LoRa frequency/SF/bandwidth, nRF24 channel/data rate. Values are checked against the
+  PHY and the device profile; changes are refused while transmitting.
+- `trace` lets stacks report application events, which tests and the summary count.
+- `abi_version` guards incompatible changes: v1 initial, v2 added radio control and stack versions.
 - Stacks are never called back synchronously from a host function: `on_tx_done` and `on_timer`
   always arrive as separate events.
 
@@ -87,17 +141,22 @@ simulator provides `ksim_host_t` (time, `radio_send`, timers, random numbers, `t
   "capture_threshold_db": 6,
   "duty_cycle_limit": 0.01,
   "nodes": [
-    { "id": 1, "pos": [0, 0], "stack": "kervan",
+    { "id": 1, "pos": [0, 0], "device": "esp32-sx1276", "stack": "kervan",
+      "radio": { "sf": 9 },
       "config": { "send_to": 2, "send_every_ms": 60000, "ack": true } },
-    { "id": 2, "pos": [800, 0], "stack": "kervan", "radio": { "sf": 9 } }
+    { "id": 2, "pos": [800, 0], "stack": "kervan" }
   ]
 }
 ```
 
-Unknown keys are rejected, so typos do not silently fall back to defaults. A node's `radio` object
-overrides the scenario default. `config` is handed to the stack as `key=value;key=value`.
+- Unknown keys are rejected, so typos do not silently fall back to defaults; settings of the wrong
+  radio type (e.g. `sf` on an nRF24) are rejected too.
+- A node's radio starts from its device profile (or the scenario `radio` if it has no device) and
+  its own `radio` object overrides individual settings.
+- `config` is handed to the stack as `key=value;key=value`. Use strings for hexadecimal values
+  (`"addr": "0xE7E7E7E701"`).
 
-### Kervan stack config
+### Kervan stack config (`kervan` v1, LoRa radios)
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -113,15 +172,31 @@ overrides the scenario default. `config` is handed to the stack as `key=value;ke
 
 It reports `app_tx`, `app_tx_busy`, `app_rx`, `app_ack`, `app_ack_timeout`.
 
+### nRF24 ESB stack config (`nrf24-esb` v1, nRF24 radios)
+
+See [nrf24-esb.md](nrf24-esb.md#stack-config).
+
 ## Trace format
 
-JSON Lines, one event per line, e.g.
+JSON Lines, one event per line. The first line records the versions of everything that produced
+the run:
 
 ```json
+{"t":0,"ev":"meta","ksim":"0.1.0","abi":2,"phy":{"lora":"1"},"stack":{"kervan":"1"},"device":{"esp32-sx1276":"1"}}
 {"t":1520384,"ev":"tx","node":1,"len":18,"airtime":185344}
 {"t":1705728,"ev":"rx","node":2,"from":1,"rssi":-101.23,"snr":15.8}
 {"t":1705728,"ev":"lost","node":3,"from":1,"reason":"collision"}
 {"t":1705728,"ev":"app","node":2,"name":"app_rx","detail":"from=1 seq=7 len=10"}
 ```
 
-Frames below a receiver's sensitivity are not traced (the receiver never notices them).
+Loss reasons: `collision`, `half_duplex`, `rx_off`.
+
+## Extending ksim
+
+| Add | Where | Code? |
+|---|---|---|
+| A board | `sim/devices/<name>.json` or a `--devices` directory | no |
+| A protocol stack | `sim/stacks/<name>/`, implement `ksim_stack_t`, register in `sim/src/main.cpp` | C (or anything with a C ABI) |
+| A radio technology | subclass `Phy` in `sim/src/phy.cpp`, add its settings to `RadioConfig` and the scenario parser | C++ |
+
+Every addition gets a version, tests, and an entry in these docs.

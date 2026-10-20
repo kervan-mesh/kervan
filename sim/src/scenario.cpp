@@ -7,118 +7,23 @@
 
 #include <cmath>
 #include <fstream>
-#include <initializer_list>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
 
-#include <nlohmann/json.hpp>
+#include "json_util.hpp"
 
 namespace ksim {
 
+using namespace json_util;
+
 namespace {
-
-using nlohmann::json;
-
-[[noreturn]] void fail(const std::string &where, const std::string &msg)
-{
-    throw std::runtime_error(where + ": " + msg);
-}
-
-void check_object(const json &obj, std::initializer_list<const char *> allowed,
-                  const std::string &where)
-{
-    if (!obj.is_object()) {
-        fail(where, "must be an object");
-    }
-    for (const auto &item : obj.items()) {
-        bool known = false;
-        for (const char *key : allowed) {
-            known = known || item.key() == key;
-        }
-        if (!known) {
-            fail(where, "unknown key '" + item.key() + "'");
-        }
-    }
-}
-
-double get_double(const json &obj, const char *key, double def, const std::string &where)
-{
-    if (!obj.contains(key)) {
-        return def;
-    }
-    const json &v = obj.at(key);
-    if (!v.is_number()) {
-        fail(where + "." + key, "must be a number");
-    }
-    return v.get<double>();
-}
-
-uint64_t get_u64(const json &obj, const char *key, uint64_t def, uint64_t max,
-                 const std::string &where)
-{
-    if (!obj.contains(key)) {
-        return def;
-    }
-    const json &v = obj.at(key);
-    if (!v.is_number_integer() || (!v.is_number_unsigned() && v.get<int64_t>() < 0)) {
-        fail(where + "." + key, "must be a non-negative integer");
-    }
-    const uint64_t value = v.get<uint64_t>();
-    if (value > max) {
-        fail(where + "." + key, "must be at most " + std::to_string(max));
-    }
-    return value;
-}
-
-int get_int(const json &obj, const char *key, int def, const std::string &where)
-{
-    return static_cast<int>(get_u64(obj, key, static_cast<uint64_t>(def),
-                                    static_cast<uint64_t>(std::numeric_limits<int>::max()), where));
-}
-
-bool get_bool(const json &obj, const char *key, bool def, const std::string &where)
-{
-    if (!obj.contains(key)) {
-        return def;
-    }
-    if (!obj.at(key).is_boolean()) {
-        fail(where + "." + key, "must be true or false");
-    }
-    return obj.at(key).get<bool>();
-}
-
-LoraParams parse_radio(const json &j, LoraParams p, const std::string &where)
-{
-    check_object(j,
-                 {"type", "freq_hz", "bw_hz", "sf", "cr", "preamble", "crc", "implicit_header",
-                  "tx_power_dbm"},
-                 where);
-    if (j.contains("type") && j.at("type") != "lora") {
-        fail(where + ".type", "only \"lora\" is supported");
-    }
-    p.freq_hz = get_u64(j, "freq_hz", p.freq_hz, std::numeric_limits<uint64_t>::max(), where);
-    p.bw_hz = static_cast<uint32_t>(get_u64(j, "bw_hz", p.bw_hz, 500000, where));
-    p.sf = get_int(j, "sf", p.sf, where);
-    p.cr = get_int(j, "cr", p.cr, where);
-    p.preamble = get_int(j, "preamble", p.preamble, where);
-    p.crc = get_bool(j, "crc", p.crc, where);
-    p.implicit_header = get_bool(j, "implicit_header", p.implicit_header, where);
-    p.tx_power_dbm = get_double(j, "tx_power_dbm", p.tx_power_dbm, where);
-    const std::string err = lora_validate(p);
-    if (!err.empty()) {
-        fail(where, err);
-    }
-    return p;
-}
 
 std::string config_value(const json &v, const std::string &where)
 {
     std::string s;
     if (v.is_boolean()) {
         s = v.get<bool>() ? "1" : "0";
-    } else if (v.is_number_integer()) {
-        s = v.dump();
     } else if (v.is_number()) {
         s = v.dump();
     } else if (v.is_string()) {
@@ -165,9 +70,70 @@ Vec3 parse_pos(const json &j, const std::string &where)
     return p;
 }
 
+void parse_path_loss(const json &pl, PathLoss &out)
+{
+    const std::string where = "scenario.path_loss";
+    check_object(pl, {"model", "exponent", "ref_distance_m", "ref_loss_db", "shadowing_sigma_db"},
+                 where);
+    if (pl.contains("model") && pl.at("model") != "log_distance") {
+        fail(where + ".model", "only \"log_distance\" is supported");
+    }
+    out.exponent = get_double(pl, "exponent", out.exponent, where);
+    out.ref_distance_m = get_double(pl, "ref_distance_m", out.ref_distance_m, where);
+    if (pl.contains("ref_loss_db")) {
+        out.ref_loss_db = get_double(pl, "ref_loss_db", 0.0, where);
+    }
+    out.shadowing_sigma_db = get_double(pl, "shadowing_sigma_db", out.shadowing_sigma_db, where);
+    if (out.ref_distance_m <= 0.0 || out.shadowing_sigma_db < 0.0) {
+        fail(where, "ref_distance_m must be > 0 and shadowing_sigma_db >= 0");
+    }
+}
+
+NodeSpec parse_node(const json &jn, const Scenario &s, const DeviceRegistry &devices,
+                    const std::string &where)
+{
+    check_object(jn, {"id", "pos", "device", "stack", "config", "radio"}, where);
+    if (!jn.contains("id") || !jn.contains("pos") || !jn.contains("stack")) {
+        fail(where, "needs \"id\", \"pos\" and \"stack\"");
+    }
+    NodeSpec n;
+    n.id = static_cast<uint32_t>(get_u64(jn, "id", 0, 0xFFFFFFFFu, where));
+    n.pos = parse_pos(jn.at("pos"), where + ".pos");
+    n.stack = get_string(jn, "stack", "", where);
+
+    // radio: device defaults (or the scenario default), then the node's own overrides
+    n.radio = s.radio;
+    if (jn.contains("device")) {
+        const std::string name = get_string(jn, "device", "", where);
+        const DeviceProfile *d = devices.find(name);
+        if (d == nullptr) {
+            fail(where + ".device", "unknown device '" + name + "' (see `ksim devices`)");
+        }
+        n.device = *d;
+        n.radio = d->radio;
+    }
+    if (jn.contains("radio")) {
+        const json &jr = jn.at("radio");
+        n.radio = parse_radio(jr, n.radio, where + ".radio");
+        if (n.device && n.radio.type != n.device->radio.type) {
+            fail(where + ".radio.type", n.device->check(n.radio));
+        }
+    }
+    if (n.device) {
+        const std::string err = n.device->check(n.radio);
+        if (!err.empty()) {
+            fail(where + ".radio", err);
+        }
+    }
+    if (jn.contains("config")) {
+        n.config = config_string(jn.at("config"), where + ".config");
+    }
+    return n;
+}
+
 } // namespace
 
-Scenario parse_scenario(const std::string &json_text)
+Scenario parse_scenario(const std::string &json_text, const DeviceRegistry &devices)
 {
     json root;
     try {
@@ -197,49 +163,15 @@ Scenario parse_scenario(const std::string &json_text)
         s.radio = parse_radio(root.at("radio"), s.radio, "scenario.radio");
     }
     if (root.contains("path_loss")) {
-        const json &pl = root.at("path_loss");
-        const std::string where = "scenario.path_loss";
-        check_object(pl,
-                     {"model", "exponent", "ref_distance_m", "ref_loss_db", "shadowing_sigma_db"},
-                     where);
-        if (pl.contains("model") && pl.at("model") != "log_distance") {
-            fail(where + ".model", "only \"log_distance\" is supported");
-        }
-        s.path_loss.exponent = get_double(pl, "exponent", s.path_loss.exponent, where);
-        s.path_loss.ref_distance_m =
-            get_double(pl, "ref_distance_m", s.path_loss.ref_distance_m, where);
-        if (pl.contains("ref_loss_db")) {
-            s.path_loss.ref_loss_db = get_double(pl, "ref_loss_db", 0.0, where);
-        }
-        s.path_loss.shadowing_sigma_db =
-            get_double(pl, "shadowing_sigma_db", s.path_loss.shadowing_sigma_db, where);
-        if (s.path_loss.ref_distance_m <= 0.0 || s.path_loss.shadowing_sigma_db < 0.0) {
-            fail(where, "ref_distance_m must be > 0 and shadowing_sigma_db >= 0");
-        }
+        parse_path_loss(root.at("path_loss"), s.path_loss);
     }
 
     if (!root.contains("nodes") || !root.at("nodes").is_array() || root.at("nodes").empty()) {
         fail("scenario.nodes", "must be a non-empty array");
     }
     for (size_t i = 0; i < root.at("nodes").size(); i++) {
-        const json &jn = root.at("nodes")[i];
         const std::string where = "scenario.nodes[" + std::to_string(i) + "]";
-        check_object(jn, {"id", "pos", "stack", "config", "radio"}, where);
-        NodeSpec n;
-        if (!jn.contains("id") || !jn.contains("pos") || !jn.contains("stack")) {
-            fail(where, "needs \"id\", \"pos\" and \"stack\"");
-        }
-        n.id = static_cast<uint32_t>(get_u64(jn, "id", 0, 0xFFFFFFFFu, where));
-        n.pos = parse_pos(jn.at("pos"), where + ".pos");
-        if (!jn.at("stack").is_string()) {
-            fail(where + ".stack", "must be a string");
-        }
-        n.stack = jn.at("stack").get<std::string>();
-        n.radio = jn.contains("radio") ? parse_radio(jn.at("radio"), s.radio, where + ".radio")
-                                       : s.radio;
-        if (jn.contains("config")) {
-            n.config = config_string(jn.at("config"), where + ".config");
-        }
+        NodeSpec n = parse_node(root.at("nodes")[i], s, devices, where);
         for (const NodeSpec &other : s.nodes) {
             if (other.id == n.id) {
                 fail(where + ".id", "duplicate id " + std::to_string(n.id));
@@ -250,7 +182,12 @@ Scenario parse_scenario(const std::string &json_text)
     return s;
 }
 
-Scenario load_scenario_file(const std::string &path)
+Scenario parse_scenario(const std::string &json_text)
+{
+    return parse_scenario(json_text, DeviceRegistry::builtin());
+}
+
+Scenario load_scenario_file(const std::string &path, const DeviceRegistry &devices)
 {
     std::ifstream in(path, std::ios::binary);
     if (!in) {
@@ -259,10 +196,15 @@ Scenario load_scenario_file(const std::string &path)
     std::ostringstream text;
     text << in.rdbuf();
     try {
-        return parse_scenario(text.str());
+        return parse_scenario(text.str(), devices);
     } catch (const std::runtime_error &e) {
         throw std::runtime_error(path + ": " + e.what());
     }
+}
+
+Scenario load_scenario_file(const std::string &path)
+{
+    return load_scenario_file(path, DeviceRegistry::builtin());
 }
 
 } // namespace ksim

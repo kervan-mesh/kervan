@@ -6,26 +6,32 @@
 // ksim command line: run a scenario file and print a summary.
 
 #include <cstdio>
+#include <cstddef>
 #include <cstdlib>
 #include <exception>
 #include <fstream>
 #include <string>
 #include <vector>
 
+#include "ksim/device.hpp"
 #include "ksim/scenario.hpp"
 #include "ksim/simulator.hpp"
 #include "ksim/stacks/kervan.h"
+#include "ksim/stacks/nrf24_esb.h"
 
 namespace {
 
-const ksim_stack_t *builtin_stacks[] = {ksim_stack_kervan()};
+const ksim_stack_t *builtin_stacks[] = {ksim_stack_kervan(), ksim_stack_nrf24_esb()};
 
 int usage()
 {
     std::fprintf(stderr,
                  "usage:\n"
                  "  ksim run <scenario.json> [--seed N] [--duration SECONDS] [--trace FILE]\n"
-                 "  ksim stacks\n");
+                 "                           [--devices DIR]\n"
+                 "  ksim stacks                     list protocol stacks\n"
+                 "  ksim devices [--devices DIR]    list device profiles\n"
+                 "  ksim version\n");
     return 2;
 }
 
@@ -36,11 +42,17 @@ double seconds(ksim::Time us)
 
 void print_summary(const ksim::Scenario &scn, const ksim::Summary &sum)
 {
-    std::printf("seed %llu, %.3f s simulated, %zu nodes\n\n", (unsigned long long)scn.seed,
+    std::printf("seed %llu, %.3f s simulated, %zu nodes\n", (unsigned long long)scn.seed,
                 seconds(sum.duration_us), scn.nodes.size());
-    std::printf("radio   frames sent %llu, received %llu, lost: collision %llu, half-duplex %llu\n",
+    std::printf("models ");
+    for (const auto &[name, ver] : sum.versions) {
+        std::printf(" %s %s", name.c_str(), ver.c_str());
+    }
+    std::printf("\n\nradio   frames sent %llu, received %llu, lost: collision %llu, "
+                "half-duplex %llu, receiver off %llu\n",
                 (unsigned long long)sum.tx, (unsigned long long)sum.rx_ok,
-                (unsigned long long)sum.lost_collision, (unsigned long long)sum.lost_half_duplex);
+                (unsigned long long)sum.lost_collision, (unsigned long long)sum.lost_half_duplex,
+                (unsigned long long)sum.lost_rx_off);
     if (!sum.app_events.empty()) {
         std::printf("app    ");
         for (const auto &[name, count] : sum.app_events) {
@@ -49,17 +61,18 @@ void print_summary(const ksim::Scenario &scn, const ksim::Summary &sum)
         std::printf("\n");
     }
 
-    std::printf("\n  node   airtime s   duty %%      tx   rx ok  collis.  half-dup\n");
+    std::printf("\n  node   airtime s   duty %%      tx   rx ok  collis.  half-dup  rx-off\n");
     bool over_limit = false;
     for (const ksim::NodeStats &n : sum.nodes) {
-        const double duty =
-            sum.duration_us > 0 ? static_cast<double>(n.airtime_us) / static_cast<double>(sum.duration_us)
-                                : 0.0;
+        const double duty = sum.duration_us > 0 ? static_cast<double>(n.airtime_us) /
+                                                      static_cast<double>(sum.duration_us)
+                                                : 0.0;
         const bool warn = duty > scn.duty_cycle_limit;
         over_limit = over_limit || warn;
-        std::printf("%6u %11.3f %9.3f %7llu %7llu %8llu %9llu%s\n", n.id, seconds(n.airtime_us),
-                    duty * 100.0, (unsigned long long)n.tx, (unsigned long long)n.rx_ok,
-                    (unsigned long long)n.lost_collision, (unsigned long long)n.lost_half_duplex,
+        std::printf("%6u %11.3f %9.3f %7llu %7llu %8llu %9llu %7llu%s\n", n.id,
+                    seconds(n.airtime_us), duty * 100.0, (unsigned long long)n.tx,
+                    (unsigned long long)n.rx_ok, (unsigned long long)n.lost_collision,
+                    (unsigned long long)n.lost_half_duplex, (unsigned long long)n.lost_rx_off,
                     warn ? "  <- over duty cycle limit" : "");
     }
     if (over_limit) {
@@ -68,12 +81,28 @@ void print_summary(const ksim::Scenario &scn, const ksim::Summary &sum)
     std::printf("\ntrace hash %016llx\n", (unsigned long long)sum.trace_hash);
 }
 
-int run(const std::vector<std::string> &args)
+// Pull "--devices DIR" out of args and load it on top of the built-in profiles.
+ksim::DeviceRegistry load_devices(std::vector<std::string> &args)
 {
+    ksim::DeviceRegistry devices = ksim::DeviceRegistry::builtin();
+    for (size_t i = 0; i + 1 < args.size(); i++) {
+        if (args[i] == "--devices") {
+            devices.load_dir(args[i + 1]);
+            args.erase(args.begin() + static_cast<std::ptrdiff_t>(i),
+                       args.begin() + static_cast<std::ptrdiff_t>(i + 2));
+            break;
+        }
+    }
+    return devices;
+}
+
+int run(std::vector<std::string> args)
+{
+    const ksim::DeviceRegistry devices = load_devices(args);
     if (args.empty()) {
         return usage();
     }
-    ksim::Scenario scn = ksim::load_scenario_file(args[0]);
+    ksim::Scenario scn = ksim::load_scenario_file(args[0], devices);
     std::string trace_path;
     for (size_t i = 1; i < args.size(); i += 2) {
         if (i + 1 >= args.size()) {
@@ -110,6 +139,16 @@ int run(const std::vector<std::string> &args)
     return 0;
 }
 
+int list_devices(std::vector<std::string> args)
+{
+    const ksim::DeviceRegistry devices = load_devices(args);
+    for (const ksim::DeviceProfile *d : devices.all()) {
+        std::printf("%-22s v%-3d %-6s %s\n", d->name.c_str(), d->version,
+                    ksim::phy_for(d->radio.type).name(), d->description.c_str());
+    }
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -124,10 +163,17 @@ int main(int argc, char **argv)
         if (cmd == "run") {
             return run(args);
         }
+        if (cmd == "devices") {
+            return list_devices(args);
+        }
         if (cmd == "stacks") {
             for (const ksim_stack_t *stack : builtin_stacks) {
-                std::printf("%s\n", stack->name);
+                std::printf("%-12s v%s\n", stack->name, stack->version);
             }
+            return 0;
+        }
+        if (cmd == "version") {
+            std::printf("ksim %s (stack ABI %u)\n", ksim::version(), KSIM_ABI_VERSION);
             return 0;
         }
         return usage();

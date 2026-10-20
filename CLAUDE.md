@@ -26,8 +26,12 @@ Wire format: `docs/frame-format.md`. Simulator: `docs/simulator.md`.
 Simulator rules: ksim is **general-purpose** — `ksim_core` must never depend on Kervan core; protocols
 plug in through the C ABI in `sim/include/ksim/stack.h` (`sim/stacks/<name>/`). Results must be
 bit-identical across OSes: no `<random>` distributions, round signal levels before comparing.
-`KervanStack.GoldenLineScenario` pins a trace hash — update it only for intended behaviour changes.
-Unknown scenario keys are errors.
+Golden tests (`KervanStack.GoldenLineScenario`, `Esb.GoldenStarScenario`) pin trace hashes — update
+them only for intended behaviour changes, after checking the trace diff. Unknown scenario keys are
+errors. Everything is versioned (PHY `version()`, `ksim_stack_t::version`, device profile `version`,
+trace `meta` line): bump the version whenever results can change. Boards are data
+(`sim/devices/*.json`); see "Extending ksim" in `docs/simulator.md`. ESB model spec:
+`docs/nrf24-esb.md` (clean-room; values marked *(verify)* still need a datasheet check).
 Ports drive the node from their main loop (`kv_node_on_rx/on_tx_done/tick`, `next_deadline`) and
 never call core from inside a PAL callback or an interrupt.
 
@@ -95,11 +99,14 @@ every push/PR.
 - [x] Phase 1 — frame format + PAL; two nodes talk over UDP on a PC
 - [ ] Phase 2 — discrete-event simulator, LoRa channel model  ← in progress
   - [x] 2a — engine, LoRa channel, C ABI stack adapter, Kervan stack, scenario files, `ksim` CLI
-  - [ ] 2b — 2.4 GHz PHY + nRF24L01 Enhanced ShockBurst model (clean-room from datasheet)
+  - [x] 2b — PHY abstraction, nRF24 PHY + Enhanced ShockBurst stack, device profiles, ABI v2
+    (radio control), versioned models
   - [ ] 2c — out-of-process stacks (lockstep over a socket)
 - [ ] Phase 3 — pub/sub, QoS 1, fragmentation
 - [ ] Phase 4 — multi-hop mesh
-- [ ] Phase 5 — web visualizer
+- [ ] Phase 5 — web UI: scenario editor (pick device/board, protocol, radio, traffic; drag nodes on a
+  map) + live visualizer (packet animation, charts), served locally by `ksim serve`. Writes the same
+  scenario JSON, reads the same trace. Needs device profiles (board = MCU + radio, limits, current).
 - [ ] Phase 6 — ESP32 + LoRa port, hardware-in-the-loop bridge
 - [ ] Phase 7 — more PHYs, encryption (AES-CCM), energy model, MQTT gateway
 

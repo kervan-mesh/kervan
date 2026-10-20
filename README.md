@@ -46,7 +46,7 @@ Going "live" means writing a port — the protocol code does not change.
 | 2 | Discrete-event simulator with a LoRa channel model |
 | 3 | Pub/sub, QoS 1, fragmentation |
 | 4 | Multi-hop mesh |
-| 5 | Web visualizer |
+| 5 | Web UI: build scenarios visually (boards, protocols, radios, traffic) and watch them run |
 | 6 | ESP32 + LoRa port, hardware-in-the-loop bridge |
 | 7 | More PHYs (BLE, 802.15.4, ESP-NOW), encryption, energy model, MQTT gateway (*Kervansaray*) |
 
@@ -85,8 +85,11 @@ build/sim/ksim run sim/scenarios/line_5.json --trace line_5.jsonl
 ```
 
 It prints delivery and loss statistics, per-node airtime and duty cycle. See
-[docs/simulator.md](docs/simulator.md) for the channel model and the scenario format. The simulator
-is protocol-agnostic: other stacks plug in through a small C interface.
+[docs/simulator.md](docs/simulator.md) for the channel models and the scenario format.
+
+The simulator is protocol-agnostic and modular: radios (LoRa, nRF24L01+), protocol stacks (Kervan,
+nRF24 Enhanced ShockBurst) and boards (`ksim devices`) are separate, versioned building blocks.
+New boards are plain JSON files; new stacks plug in through a small C interface.
 
 ### Dev container (recommended)
 

@@ -37,7 +37,7 @@ TEST(Scenario, MinimalUsesDefaults)
     EXPECT_EQ(s.duration_us, 60'000'000u);
     EXPECT_EQ(s.mtu, 255u);
     ASSERT_EQ(s.nodes.size(), 1u);
-    EXPECT_EQ(s.nodes[0].radio.sf, 7);
+    EXPECT_EQ(s.nodes[0].radio.lora.sf, 7);
     EXPECT_EQ(s.nodes[0].config, "");
     EXPECT_FALSE(s.path_loss.ref_loss_db.has_value());
 }
@@ -63,10 +63,10 @@ TEST(Scenario, FullFile)
     EXPECT_DOUBLE_EQ(*s.path_loss.ref_loss_db, 70.0);
     EXPECT_DOUBLE_EQ(s.capture_threshold_db, 3.0);
     EXPECT_DOUBLE_EQ(s.nodes[0].pos.z, 3.0);
-    EXPECT_EQ(s.nodes[0].radio.sf, 9);
-    EXPECT_EQ(s.nodes[0].radio.bw_hz, 250000u);
+    EXPECT_EQ(s.nodes[0].radio.lora.sf, 9);
+    EXPECT_EQ(s.nodes[0].radio.lora.bw_hz, 250000u);
     EXPECT_EQ(s.nodes[0].config, "ack=1;len=12;send_to=2"); // sorted keys
-    EXPECT_EQ(s.nodes[1].radio.sf, 12);                     // override
+    EXPECT_EQ(s.nodes[1].radio.lora.sf, 12);                     // override
     EXPECT_DOUBLE_EQ(s.nodes[1].radio.tx_power_dbm, 20.0);  // rest inherited
 }
 
@@ -94,9 +94,51 @@ TEST(Scenario, ErrorsPointAtTheProblem)
 
 TEST(Scenario, ShippedScenariosParse)
 {
-    for (const char *name : {"two_nodes.json", "line_5.json", "star_collisions.json"}) {
+    for (const char *name : {"two_nodes.json", "line_5.json", "star_collisions.json", "nrf24_star.json"}) {
         SCOPED_TRACE(name);
         EXPECT_NO_THROW(ksim::load_scenario_file(std::string(KSIM_SCENARIO_DIR) + "/" + name));
     }
     EXPECT_THROW(ksim::load_scenario_file("does/not/exist.json"), std::runtime_error);
+}
+
+TEST(Scenario, DeviceProvidesTheRadio)
+{
+    const ksim::Scenario s = parse_scenario(R"({"nodes": [
+        {"id": 1, "pos": [0, 0], "device": "arduino-nrf24l01p", "stack": "nrf24-esb"},
+        {"id": 2, "pos": [0, 0], "device": "arduino-nrf24l01p", "stack": "nrf24-esb",
+         "radio": {"channel": 10, "tx_power_dbm": -12}},
+        {"id": 3, "pos": [0, 0], "device": "esp32-sx1276", "stack": "kervan",
+         "radio": {"sf": 12, "tx_power_dbm": 20}}]})");
+    ASSERT_TRUE(s.nodes[0].device.has_value());
+    EXPECT_EQ(s.nodes[0].device->name, "arduino-nrf24l01p");
+    EXPECT_EQ(s.nodes[0].radio.type, ksim::PhyType::Nrf24);
+    EXPECT_EQ(s.nodes[0].radio.nrf24.channel, 76);
+    EXPECT_DOUBLE_EQ(s.nodes[0].radio.tx_power_dbm, 0.0);
+    EXPECT_EQ(s.nodes[1].radio.nrf24.channel, 10);
+    EXPECT_DOUBLE_EQ(s.nodes[1].radio.tx_power_dbm, -12.0);
+    EXPECT_EQ(s.nodes[2].radio.type, ksim::PhyType::LoRa);
+    EXPECT_EQ(s.nodes[2].radio.lora.sf, 12);
+}
+
+TEST(Scenario, RadioTypesAndDeviceErrors)
+{
+    const ksim::Scenario s = parse_scenario(R"({"radio": {"type": "nrf24", "channel": 5},
+        "nodes": [{"id": 1, "pos": [0, 0], "stack": "nrf24-esb"}]})");
+    EXPECT_EQ(s.nodes[0].radio.type, ksim::PhyType::Nrf24);
+    EXPECT_EQ(s.nodes[0].radio.nrf24.channel, 5);
+    EXPECT_FALSE(s.nodes[0].device.has_value());
+
+    expect_error(R"({"nodes": [{"id": 1, "pos": [0, 0], "device": "toaster", "stack": "x"}]})",
+                 "unknown device 'toaster'");
+    expect_error(R"({"nodes": [{"id": 1, "pos": [0, 0], "device": "arduino-nrf24l01p",
+                                "stack": "x", "radio": {"tx_power_dbm": 5}}]})",
+                 "supports tx_power_dbm -18, -12, -6, 0");
+    expect_error(R"({"nodes": [{"id": 1, "pos": [0, 0], "device": "esp32-sx1276",
+                                "stack": "x", "radio": {"type": "nrf24"}}]})",
+                 "has a lora radio");
+    expect_error(R"({"radio": {"type": "nrf24", "sf": 7}, "nodes": []})", "not a nrf24 setting");
+    expect_error(R"({"radio": {"type": "lora", "channel": 7}, "nodes": []})",
+                 "not a lora setting");
+    expect_error(R"({"radio": {"type": "nrf24", "channel": 126}, "nodes": []})",
+                 "channel must be 0..125");
 }

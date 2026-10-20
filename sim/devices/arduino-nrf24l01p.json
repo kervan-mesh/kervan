@@ -1,0 +1,8 @@
+{
+  "name": "arduino-nrf24l01p",
+  "version": 1,
+  "description": "Arduino (ATmega328P) with a Nordic nRF24L01+ module, PCB antenna",
+  "mcu": "ATmega328P",
+  "radio": { "type": "nrf24", "channel": 76, "data_rate": 1000000, "crc_bytes": 2, "tx_power_dbm": 0 },
+  "limits": { "tx_power_dbm": [-18, -12, -6, 0] }
+}
