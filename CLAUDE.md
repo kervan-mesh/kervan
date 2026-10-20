@@ -31,7 +31,7 @@ them only for intended behaviour changes, after checking the trace diff. Unknown
 errors. Everything is versioned (PHY `version()`, `ksim_stack_t::version`, device profile `version`,
 trace `meta` line): bump the version whenever results can change. Boards are data
 (`sim/devices/*.json`); see "Extending ksim" in `docs/simulator.md`. ESB model spec:
-`docs/nrf24-esb.md` (clean-room; values marked *(verify)* still need a datasheet check).
+`docs/nrf24-esb.md` (clean-room, datasheet values checked).
 Ports drive the node from their main loop (`kv_node_on_rx/on_tx_done/tick`, `next_deadline`) and
 never call core from inside a PAL callback or an interrupt.
 

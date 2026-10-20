@@ -3,8 +3,8 @@
 Status: **model version 1** (`nrf24` PHY v1, `nrf24-esb` stack v1).
 
 A clean-room model written from the behaviour described in the Nordic nRF24L01+ product
-specification (v1.0). No vendor or library code is used. Values marked *(verify)* should be
-re-checked against the datasheet; everything else is a direct consequence of the packet format.
+specification (v1.0). No vendor or library code is used. The datasheet values were checked
+by the maintainer; everything else follows from the packet format.
 
 ## PHY (`"type": "nrf24"`)
 
@@ -14,7 +14,7 @@ re-checked against the datasheet; everything else is a direct consequence of the
 | Data rate | 250 kbps, 1 Mbps, 2 Mbps (GFSK) |
 | TX power | 0, −6, −12, −18 dBm (limits come from the device profile) |
 | Sensitivity | −94 dBm @ 250 kbps, −85 dBm @ 1 Mbps, −82 dBm @ 2 Mbps; a frame is received if RSSI ≥ sensitivity |
-| Co-channel capture (C/I) | 12 dB @ 250 kbps, 9 dB @ 1 Mbps, 7 dB @ 2 Mbps *(verify)* |
+| Co-channel capture (C/I) | 12 dB @ 250 kbps, 9 dB @ 1 Mbps, 7 dB @ 2 Mbps |
 | Occupied bandwidth | 1 MHz at 250 kbps / 1 Mbps, 2 MHz at 2 Mbps: a 2 Mbps frame also hits the neighbouring channels |
 | Interference | Frames interfere when their occupied bands overlap, regardless of data rate |
 
@@ -54,8 +54,7 @@ Models the chip's link layer the way firmware sees it (PRIM_RX, EN_AA, ARD/ARC, 
 2. Leave RX, settle 130 µs, transmit.
 3. With NO_ACK: done (TX_DS) when the frame has been sent.
 4. Otherwise listen for the ACK from 130 µs after the frame ends. An ACK is any frame on the
-   destination address that arrives completely before the ARD expires *(verify: whether the chip
-   can mistake another transmitter's data frame to the same address for its ACK)*.
+   destination address that arrives completely before the ARD expires.
    - ACK received → TX_DS (and the ACK payload, if any). Done.
    - ARD expires → retransmit, up to ARC times; then MAX_RT. Done.
 5. Back to listening (PRX) if the node listens, else standby.
