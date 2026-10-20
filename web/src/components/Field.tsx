@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 
 import type { Link } from '../api';
-import { between, txOverlapping, type Replay, type Rx } from '../model/replay';
+import { between, txOverlapping, type Replay, type Rx, type Tx } from '../model/replay';
 import { bounds, type ScenarioDoc } from '../model/scenario';
 
 export type Tool = 'select' | 'add';
@@ -20,6 +20,7 @@ interface Props {
   showLinks: boolean;
   showLosses: boolean;
   showDistances: boolean; // distance labels on links
+  packet: { tx: Tx; rxs: Rx[] } | null; // frame open in the inspector, drawn on top
   replay: Replay | null;
   time: number; // µs
   window: number; // µs an event stays visible
@@ -344,6 +345,31 @@ export function Field(props: Props) {
         }
       }
       ctx.globalAlpha = 1;
+    }
+
+    // the inspected frame: sender ring and a line to everyone who heard it
+    if (p.packet) {
+      const from = pos.get(p.packet.tx.node);
+      if (from) {
+        ctx.lineWidth = 3;
+        for (const rx of p.packet.rxs) {
+          const to = pos.get(rx.node);
+          if (!to) {
+            continue;
+          }
+          ctx.strokeStyle = lossColor(c, rx);
+          ctx.setLineDash(rx.ok ? [] : [6, 4]);
+          ctx.beginPath();
+          ctx.moveTo(from.x, from.y);
+          ctx.lineTo(to.x, to.y);
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
+        ctx.strokeStyle = p.packet.tx.relay ? c.relay : c.tx;
+        ctx.beginPath();
+        ctx.arc(from.x, from.y, NODE_R + 7, 0, Math.PI * 2);
+        ctx.stroke();
+      }
     }
 
     // nodes

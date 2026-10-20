@@ -5,6 +5,7 @@
 
 #include "ksim/scenario.hpp"
 
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -22,38 +23,70 @@ using namespace json_util;
 
 namespace {
 
-std::string config_value(const json &v, const std::string &where)
+int hex_digit(char c)
 {
-    std::string s;
-    if (v.is_boolean()) {
-        s = v.get<bool>() ? "1" : "0";
-    } else if (v.is_number()) {
-        s = v.dump();
-    } else if (v.is_string()) {
-        s = v.get<std::string>();
-    } else {
-        fail(where, "must be a number, string or boolean");
+    if (c >= '0' && c <= '9') {
+        return c - '0';
     }
-    if (s.find_first_of(";=") != std::string::npos) {
-        fail(where, "must not contain ';' or '='");
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
     }
-    return s;
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return -1;
 }
 
-// {"a": 1, "b": true} -> "a=1;b=1" (keys sorted, so the string is deterministic)
-std::string config_string(const json &cfg, const std::string &where)
+// "01 A2 ff", "0x01a2ff" -> bytes; whitespace between bytes is ignored.
+std::vector<uint8_t> parse_hex(const std::string &text, const std::string &where)
 {
-    if (!cfg.is_object()) {
-        fail(where, "must be an object");
+    std::string digits;
+    size_t i = 0;
+    while (i < text.size() && std::isspace(static_cast<unsigned char>(text[i]))) {
+        i++;
     }
-    std::string out;
-    for (const auto &item : cfg.items()) {
-        if (!out.empty()) {
-            out += ';';
+    if (text.compare(i, 2, "0x") == 0 || text.compare(i, 2, "0X") == 0) {
+        i += 2;
+    }
+    for (; i < text.size(); i++) {
+        const char c = text[i];
+        if (std::isspace(static_cast<unsigned char>(c))) {
+            continue;
         }
-        out += item.key() + "=" + config_value(item.value(), where + "." + item.key());
+        if (hex_digit(c) < 0) {
+            fail(where, std::string("'") + c + "' is not a hex digit");
+        }
+        digits += c;
+    }
+    if (digits.size() % 2 != 0) {
+        fail(where, "needs an even number of hex digits (two per byte)");
+    }
+    std::vector<uint8_t> out;
+    for (size_t k = 0; k < digits.size(); k += 2) {
+        out.push_back(static_cast<uint8_t>(hex_digit(digits[k]) * 16 + hex_digit(digits[k + 1])));
     }
     return out;
+}
+
+PayloadSpec parse_payload(const json &jp, const std::string &where)
+{
+    check_object(jp, {"hex", "python"}, where);
+    if (jp.contains("hex") == jp.contains("python")) {
+        fail(where, "needs either \"hex\": \"01 A2 ...\" or \"python\": \"def payload(...): ...\"");
+    }
+    PayloadSpec p;
+    if (jp.contains("hex")) {
+        p.bytes = parse_hex(get_string(jp, "hex", "", where), where + ".hex");
+        if (p.bytes.size() > 1024) {
+            fail(where + ".hex", "longer than 1024 bytes");
+        }
+    } else {
+        p.python = get_string(jp, "python", "", where);
+        if (p.python.find("def payload") == std::string::npos) {
+            fail(where + ".python", "must define payload(node, seq, t)");
+        }
+    }
+    return p;
 }
 
 Vec3 parse_pos(const json &j, const std::string &where)
@@ -109,8 +142,7 @@ std::string env_var(const char *name)
 #endif
 }
 
-// The interpreter for "${python}": KSIM_PYTHON if set, else the usual name on this platform.
-std::string python_interpreter()
+std::string default_python()
 {
     const std::string env = env_var("KSIM_PYTHON");
     if (!env.empty()) {
@@ -127,7 +159,7 @@ std::string python_interpreter()
 std::string expand(std::string arg, const std::string &scenario_dir)
 {
     const std::pair<std::string, std::string> vars[] = {{"${scenario_dir}", scenario_dir},
-                                                        {"${python}", python_interpreter()}};
+                                                        {"${python}", default_python()}};
     for (const auto &[name, value] : vars) {
         for (size_t pos = arg.find(name); pos != std::string::npos;
              pos = arg.find(name, pos + value.size())) {
@@ -167,7 +199,8 @@ ProcessSpec parse_process(const json &jp, const std::string &where, const std::s
 NodeSpec parse_node(const json &jn, const Scenario &s, const DeviceRegistry &devices,
                     const std::string &where, const std::string &dir)
 {
-    check_object(jn, {"id", "pos", "device", "stack", "config", "radio", "process"}, where);
+    check_object(jn, {"id", "pos", "device", "stack", "config", "radio", "process", "payload"},
+                 where);
     if (!jn.contains("id") || !jn.contains("pos") || !jn.contains("stack")) {
         fail(where, "needs \"id\", \"pos\" and \"stack\"");
     }
@@ -205,6 +238,9 @@ NodeSpec parse_node(const json &jn, const Scenario &s, const DeviceRegistry &dev
     }
     if (jn.contains("process")) {
         n.process = parse_process(jn.at("process"), where + ".process", dir);
+    }
+    if (jn.contains("payload")) {
+        n.payload = parse_payload(jn.at("payload"), where + ".payload");
     }
     return n;
 }
@@ -295,6 +331,11 @@ Scenario load_scenario_file(const std::string &path, const DeviceRegistry &devic
 Scenario load_scenario_file(const std::string &path)
 {
     return load_scenario_file(path, DeviceRegistry::builtin());
+}
+
+std::string python_interpreter()
+{
+    return default_python();
 }
 
 } // namespace ksim

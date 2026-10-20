@@ -10,6 +10,12 @@ import type { DeviceInfo, PhyInfo, RadioValues, StackInfo } from '../api';
 
 export type ConfigValue = number | string | boolean;
 
+// What a node sends instead of its stack's test data: exactly one key.
+export interface PayloadDoc {
+  hex?: string;
+  python?: string;
+}
+
 export interface NodeDoc {
   id: number;
   pos: number[]; // [x, y] or [x, y, z] in meters
@@ -17,6 +23,7 @@ export interface NodeDoc {
   device?: string;
   config?: Record<string, ConfigValue>;
   radio?: Record<string, ConfigValue>;
+  payload?: PayloadDoc;
   [other: string]: unknown;
 }
 

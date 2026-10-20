@@ -15,6 +15,8 @@ import {
   lowerBound,
   nextEventTime,
   parseDetail,
+  receptionsOf,
+  txOfReception,
   txOverlapping,
 } from './replay';
 
@@ -25,7 +27,7 @@ const trace: TraceLine[] = [
   { t: 1000, ev: 'app', node: 1, name: 'app_tx', detail: 'to=2 seq=0' },
   { t: 51000, ev: 'rx', node: 2, from: 1, rssi: -90.5, snr: 6.25 },
   { t: 51000, ev: 'lost', node: 3, from: 1, reason: 'collision' },
-  { t: 60000, ev: 'tx', node: 2, len: 20, airtime: 80000 },
+  { t: 60000, ev: 'tx', node: 2, len: 2, airtime: 80000, data: '0a0b' },
   { t: 60000, ev: 'app', node: 2, name: 'kv_relay', detail: '' },
   { t: 140000, ev: 'lost', node: 1, from: 2, reason: 'half_duplex' },
   { t: 140000, ev: 'lost', node: 3, from: 2, reason: 'rx_off' },
@@ -39,7 +41,7 @@ describe('buildReplay', () => {
   it('sorts the trace into frames, receptions and app events', () => {
     expect(r.meta.abi).toBe(3);
     expect(r.txs).toHaveLength(2);
-    expect(r.txs[0]).toEqual({ t: 1000, end: 51000, node: 1, len: 10, relay: false });
+    expect(r.txs[0]).toEqual({ t: 1000, end: 51000, node: 1, len: 10, relay: false, data: '' });
     expect(r.txs[1]!.relay).toBe(true);
     expect(r.maxAirtime).toBe(80000);
     expect(r.rxs.filter((x) => x.ok)).toHaveLength(1);
@@ -65,6 +67,18 @@ describe('buildReplay', () => {
     expect(b[0]).toMatchObject({ start: 0, tx: 2, ok: 1, collision: 1, halfDuplex: 0, rxOff: 0 });
     expect(b[1]).toMatchObject({ start: 100000, halfDuplex: 1, rxOff: 1 });
     expect(b.slice(1).every((x) => x.tx === 0)).toBe(true);
+  });
+
+  it('links frames and receptions', () => {
+    const second = r.txs[1]!;
+    expect(second.data).toBe('0a0b');
+    expect(receptionsOf(r, second).map((x) => [x.node, x.reason])).toEqual([
+      [1, 'half_duplex'],
+      [3, 'rx_off'],
+    ]);
+    expect(txOfReception(r, r.rxs[0]!)).toBe(r.txs[0]);
+    expect(txOfReception(r, r.rxs[3]!)).toBe(second);
+    expect(txOfReception(r, { t: 51000, node: 2, from: 9, ok: true })).toBeUndefined();
   });
 
   it('counts app events per node and parses details', () => {

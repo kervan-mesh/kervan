@@ -37,8 +37,12 @@ errors. Everything is versioned (PHY `version()`, `ksim_stack_t::version`, devic
 trace `meta` line): bump the version whenever results can change. Boards are data
 (`sim/devices/*.json`); see "Extending ksim" in `docs/simulator.md`. ESB model spec:
 `docs/nrf24-esb.md` (clean-room, datasheet values checked).
-Stack ABI is v3: `ksim_stack_t::config_schema` (JSON) describes a stack's options for the UI; its
+Stack ABI is v4: `ksim_stack_t::config_schema` (JSON) describes a stack's options for the UI; its
 defaults must match the stack's real defaults (`ServeApi.SchemaDefaultsAreTheStackDefaults`).
+Stacks take scenario payloads through `ksim_host_t::app_payload` (fall back to their own data on
+-1) and may decode frames with `describe_frame` (helper `ksim/frame_fields.h`). Python payloads run
+in one helper process (`sim/remote/python/ksim_payload.py`, embedded into ksim at build time).
+Trace format 2 (`"format"` in the meta line) puts frame bytes into `tx` lines.
 `ksim serve` lives in its own library (`ksim_serve`), so `ksim_core` needs no network code; the
 API (`ksim::serve::Api`) is tested without sockets. The web UI knows no protocol: stacks describe
 their options (schema) and report events by name. Keep UI logic in `web/src/model/` (pure, vitest)
@@ -130,17 +134,13 @@ arm-none-eabi, ASan/UBSan, coverage (≥90% lines, core + port + sim), 60 s fuzz
   schema-generated forms, radio, traffic) + run-then-replay viewer (packet animation, losses by
   reason, duty cycle, stack events), `city_mesh` showcase (docs/web-ui.md). Later: real map tiles
   (OSM), comparing two runs, live streaming for HIL.
-- [ ] Phase 5b — **payloads and packet inspector** ← next (agreed with the user, 2026-10-20):
-  - Node panel "Payload" section with three modes: length only (today's counter bytes), fixed
-    content (hex bytes), Python function `payload(node, seq, t) -> bytes` edited in the panel.
-  - The simulator supplies payloads (new host function, stack ABI v4), so every stack gets all
-    three modes; Python runs out of process (same gating as `--allow-processes`) with a seeded RNG
-    to stay deterministic.
-  - Trace `tx` events carry the frame bytes (hex; bump the trace/ksim version, update goldens).
-  - Packet inspector in the UI: click a frame (event list or map) → hex dump + decoded fields;
-    stacks provide an optional frame decoder through the ABI, so the UI stays protocol-agnostic.
-- [ ] Phase 6 — ESP32 + LoRa port, hardware-in-the-loop bridge; calibrate path-loss exponent and
-  shadowing from real measurements (packet loss / RSSI vs distance) with the user's hardware
+- [x] Phase 5b — payloads and packet inspector: per-node payload (stack default / fixed hex /
+  Python `payload(node, seq, t)`) supplied by the simulator (ABI v4 `app_payload`), frame bytes in
+  the trace (format 2), packet inspector (receptions, stack-decoded fields via `describe_frame`, hex
+  dump). Ideas: user-written Python *decoders* for payload formats; payloads for out-of-process
+  nodes; picking frames on the map.
+- [ ] Phase 6 ← next: ESP32 + LoRa port, hardware-in-the-loop bridge; calibrate path-loss exponent
+  and shadowing from real measurements (packet loss / RSSI vs distance) with the user's hardware
 - [ ] Phase 7 — more PHYs, encryption (AES-CCM), energy model, MQTT gateway
 
 Update this checklist when a phase completes. Record significant design decisions in `docs/`.

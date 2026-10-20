@@ -40,4 +40,8 @@ RadioConfig parse_radio(const json &j, RadioConfig base, const std::string &wher
 // The settings of r's PHY in the format parse_radio reads.
 json radio_json(const RadioConfig &r);
 
+// A stack config object {"a": 1, "b": true} as the string stacks get: "a=1;b=1" (keys sorted, so
+// the string is deterministic). Values must be numbers, strings or booleans without ';' or '='.
+std::string config_string(const json &cfg, const std::string &where);
+
 } // namespace ksim::json_util

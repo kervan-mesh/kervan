@@ -33,6 +33,13 @@ struct ProcessSpec {
     double timeout_s = 0.0;         // 0 = default (10 s for spawn, unlimited for wait)
 };
 
+// What a node sends as application payload instead of its stack's own test data ("payload" in the
+// scenario). Exactly one of the two is used: python if it is not empty, else bytes.
+struct PayloadSpec {
+    std::vector<uint8_t> bytes; // fixed content
+    std::string python;         // source defining payload(node, seq, t) -> bytes
+};
+
 struct NodeSpec {
     uint32_t id = 0;
     Vec3 pos;
@@ -41,6 +48,7 @@ struct NodeSpec {
     std::string stack;
     std::string config;                  // "key=value;key=value", handed to the stack
     std::optional<ProcessSpec> process;  // set: the stack runs in its own process
+    std::optional<PayloadSpec> payload;  // set: the host supplies payloads (app_payload)
 };
 
 struct Scenario {

@@ -11,6 +11,8 @@
 
 #include "ksim/stacks/nrf24_esb.h"
 
+#include "ksim/frame_fields.h"
+
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -146,20 +148,31 @@ static void app_send(esb_t *s)
         event(s, "esb_tx_busy", "state=%d", (int)s->state);
         return;
     }
-    /* first byte: sender, so equal readings from two senders on one pipe are not duplicates */
-    for (i = 0; i < s->len; i++) {
-        payload[i] = i == 0u ? (uint8_t)s->host.node_id : (uint8_t)(s->counter + i);
+    unsigned len = s->len;
+    /* the scenario's payload if it sets one (it must fit the frame), else test bytes */
+    size_t cap = s->host.mtu - s->aw - 2u < MAX_PAYLOAD ? s->host.mtu - s->aw - 2u : MAX_PAYLOAD;
+    int given = s->host.app_payload != NULL
+                    ? s->host.app_payload(s->host.ctx, s->counter, payload, cap)
+                    : -1;
+
+    if (given >= 0) {
+        len = (unsigned)given;
+    } else {
+        /* first byte: sender, so equal readings from two senders on one pipe are not duplicates */
+        for (i = 0; i < len; i++) {
+            payload[i] = i == 0u ? (uint8_t)s->host.node_id : (uint8_t)(s->counter + i);
+        }
     }
     s->counter++;
     s->pid = (uint8_t)((s->pid + 1u) & 3u);
-    s->frame_len = build(s->frame, s->send_to, s->aw, s->pid, s->no_ack, payload, s->len);
+    s->frame_len = build(s->frame, s->send_to, s->aw, s->pid, s->no_ack, payload, len);
     s->retries_left = s->arc;
     s->host.timer_cancel(s->host.ctx, T_RX_ON);
     rx_enable(s, false);
     s->state = ST_PTX_SETTLE;
     at(s, T_TX_START, SETTLE_US);
     event(s, "esb_tx", "to=0x%llx pid=%u len=%u", (unsigned long long)s->send_to,
-          (unsigned)s->pid, s->len);
+          (unsigned)s->pid, len);
 }
 
 static void transmit(esb_t *s, const uint8_t *buf, size_t len, esb_state_t next)
@@ -441,6 +454,59 @@ static void es_on_timer(void *inst, uint32_t timer_id)
     }
 }
 
+/* ---- frame decoder for packet inspectors ---- */
+
+/* The address width from a config string ("aw=3".."aw=5"), default 5. */
+static unsigned config_aw(const char *config)
+{
+    const char *p = config;
+    while (p != NULL && *p != '\0') {
+        if (strncmp(p, "aw=", 3) == 0 && p[3] >= '3' && p[3] <= '5' &&
+            (p[4] == '\0' || p[4] == ';')) {
+            return (unsigned)(p[3] - '0');
+        }
+        p = strchr(p, ';');
+        p = p != NULL ? p + 1 : NULL;
+    }
+    return 5u;
+}
+
+static size_t es_describe(const char *config, const uint8_t *buf, size_t len, char *out,
+                          size_t cap)
+{
+    unsigned aw = config_aw(config);
+    unsigned plen;
+    unsigned long long addr = 0;
+    ksim_fields_t w;
+    char v[64];
+    unsigned i;
+
+    if (buf == NULL || len < aw + 2u) {
+        return 0;
+    }
+    for (i = 0; i < aw; i++) {
+        addr |= (unsigned long long)buf[i] << (8u * i);
+    }
+    plen = (unsigned)(buf[aw] >> 2);
+    ksim_fields_begin(&w, out, cap);
+    snprintf(v, sizeof(v), "0x%llX", addr);
+    ksim_field(&w, "address", v, 0, (int)aw);
+    if (plen == len - aw - 2u) {
+        snprintf(v, sizeof(v), "%u", plen);
+    } else {
+        snprintf(v, sizeof(v), "%u (frame has %u)", plen, (unsigned)(len - aw - 2u));
+    }
+    ksim_field(&w, "payload_length", v, (int)aw, 1);
+    snprintf(v, sizeof(v), "%u", (unsigned)(buf[aw] & 3u));
+    ksim_field(&w, "pid", v, (int)aw, 1);
+    ksim_field(&w, "no_ack", (buf[aw + 1u] & 1u) != 0u ? "yes" : "no", (int)aw + 1, 1);
+    if (len > aw + 2u) {
+        snprintf(v, sizeof(v), "%u bytes", (unsigned)(len - aw - 2u));
+        ksim_field(&w, "payload", v, (int)aw + 2, (int)(len - aw - 2u));
+    }
+    return ksim_fields_end(&w);
+}
+
 /* Options accepted by es_create, for tools such as the web UI (docs/simulator.md). Keep the
  * defaults in sync with es_create; a test checks them. */
 static const char config_schema[] =
@@ -477,6 +543,6 @@ const ksim_stack_t *ksim_stack_nrf24_esb(void)
 {
     static const ksim_stack_t stack = {KSIM_ABI_VERSION, "nrf24-esb",   "1",          es_create,
                                        es_destroy,       es_on_rx,      es_on_tx_done, es_on_timer,
-                                       config_schema};
+                                       config_schema, es_describe};
     return &stack;
 }

@@ -14,7 +14,9 @@ import {
   LOSS_LABEL,
   lowerBound,
   nextEventTime,
+  txOfReception,
   type Replay,
+  type Tx,
 } from '../model/replay';
 
 export const SPEEDS = [0.1, 1, 10, 60, 300, 1000];
@@ -29,6 +31,7 @@ interface Props {
   onPlay: (playing: boolean) => void;
   onSpeed: (speed: number) => void;
   onSelect: (id: number) => void;
+  onPacket: (tx: Tx) => void;
 }
 
 function Activity({ replay, time, onSeek }: Pick<Props, 'replay' | 'time' | 'onSeek'>) {
@@ -97,6 +100,7 @@ interface LogLine {
   node: number;
   cls: string;
   text: string;
+  tx?: Tx; // the frame, for radio events
 }
 
 function recentEvents(r: Replay, time: number, node: number | null, limit: number): LogLine[] {
@@ -122,15 +126,15 @@ function recentEvents(r: Replay, time: number, node: number | null, limit: numbe
       if (involves(x.node, x.from)) {
         out.push(
           x.ok
-            ? { t: x.t, node: x.node, cls: 'ok', text: `rx from ${x.from}  ${x.rssi} dBm, SNR ${x.snr} dB` }
-            : { t: x.t, node: x.node, cls: 'bad', text: `lost from ${x.from}: ${LOSS_LABEL[x.reason ?? ''] ?? x.reason}` },
+            ? { t: x.t, node: x.node, cls: 'ok', text: `rx from ${x.from}  ${x.rssi} dBm, SNR ${x.snr} dB`, tx: txOfReception(r, x) }
+            : { t: x.t, node: x.node, cls: 'bad', text: `lost from ${x.from}: ${LOSS_LABEL[x.reason ?? ''] ?? x.reason}`, tx: txOfReception(r, x) },
         );
       }
     } else {
       const x = r.txs[i--]!;
       if (involves(x.node)) {
         const ms = ((x.end - x.t) / 1000).toFixed(1);
-        out.push({ t: x.t, node: x.node, cls: x.relay ? 'relay' : 'tx', text: `tx ${x.len} B, ${ms} ms${x.relay ? ' (relay)' : ''}` });
+        out.push({ t: x.t, node: x.node, cls: x.relay ? 'relay' : 'tx', text: `tx ${x.len} B, ${ms} ms${x.relay ? ' (relay)' : ''}`, tx: x });
       }
     }
   }
@@ -183,7 +187,13 @@ export function Timeline(props: Props) {
       <div className="events" aria-label="Recent events">
         {events.length === 0 && <div className="empty">no events yet</div>}
         {events.map((e, idx) => (
-          <div key={`${e.t}-${idx}`} onClick={() => { props.onSeek(e.t); props.onSelect(e.node); }} title={e.text}>
+          <div key={`${e.t}-${idx}`} onClick={() => {
+              props.onSeek(e.t);
+              props.onSelect(e.node);
+              if (e.tx) {
+                props.onPacket(e.tx);
+              }
+            }} title={e.tx ? `${e.text} — click to inspect the frame` : e.text}>
             <span className="t">{formatTime(e.t)}</span>
             <span>{e.node}</span>
             <span className={e.cls}>{e.text}</span>

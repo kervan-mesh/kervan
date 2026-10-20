@@ -270,11 +270,13 @@ Response Api::handle(const Request &req) const
         if (auto it = listings.find(route); it != listings.end()) {
             return get ? (this->*it->second)() : error(405, "use GET");
         }
-        if (route == "check" || route == "run") {
+        if (route == "check" || route == "run" || route == "decode") {
             if (req.method != "POST") {
                 return error(405, "use POST");
             }
-            return route == "check" ? check(req.body) : run(req.body);
+            return route == "check" ? check(req.body)
+                   : route == "run" ? run(req.body)
+                                    : decode(req.body);
         }
         const std::string scenarios = "scenarios/";
         if (route.compare(0, scenarios.size(), scenarios) == 0) {
@@ -436,6 +438,11 @@ Response Api::run(const std::string &body) const
         return error(400, e.what());
     }
     for (const NodeSpec &n : scn.nodes) {
+        if (n.payload && !n.payload->python.empty() && !opt_.allow_processes) {
+            return error(403, "node " + std::to_string(n.id) +
+                                  ": Python payloads run code on this computer; start "
+                                  "`ksim serve --allow-processes` to run them");
+        }
         if (!n.process) {
             continue;
         }
@@ -481,6 +488,60 @@ Response Api::run(const std::string &body) const
     Response r;
     r.body = std::move(out);
     return r;
+}
+
+Response Api::decode(const std::string &body) const
+{
+    json req;
+    try {
+        req = json::parse(body);
+    } catch (const json::parse_error &) {
+        return error(400, "invalid JSON");
+    }
+    if (!req.is_object() || !req.contains("stack") || !req.at("stack").is_string() ||
+        !req.contains("data") || !req.at("data").is_string()) {
+        return error(400, "needs \"stack\" and \"data\" (hex)");
+    }
+    const std::string name = req.at("stack").get<std::string>();
+    const auto it = std::find_if(opt_.stacks.begin(), opt_.stacks.end(),
+                                 [&](const ksim_stack_t *s) { return name == s->name; });
+    if (it == opt_.stacks.end()) {
+        return error(404, "unknown stack '" + name + "'");
+    }
+
+    const std::string hex = req.at("data").get<std::string>();
+    std::vector<uint8_t> frame;
+    if (hex.size() % 2 != 0 || hex.size() > 1024 ||
+        hex.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos) {
+        return error(400, "\"data\" must be hex bytes");
+    }
+    for (size_t i = 0; i < hex.size(); i += 2) {
+        frame.push_back(static_cast<uint8_t>(std::stoul(hex.substr(i, 2), nullptr, 16)));
+    }
+    std::string config;
+    try {
+        if (req.contains("config")) {
+            config = json_util::config_string(req.at("config"), "config");
+        }
+    } catch (const std::exception &e) {
+        return error(400, e.what());
+    }
+
+    // null fields: the stack has no decoder or does not understand the frame (show hex only)
+    json fields = nullptr;
+    if ((*it)->describe_frame != nullptr) {
+        std::vector<char> out(16384);
+        const size_t n = (*it)->describe_frame(config.c_str(), frame.data(), frame.size(),
+                                               out.data(), out.size());
+        if (n > 0 && n < out.size()) {
+            try {
+                fields = json::parse(std::string(out.data(), n));
+            } catch (const json::parse_error &) {
+                fields = nullptr; // a broken decoder must not break the inspector
+            }
+        }
+    }
+    return json_response({{"fields", fields}});
 }
 
 } // namespace ksim::serve

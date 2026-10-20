@@ -55,6 +55,7 @@ private:
     Response scenario_put(const std::string &name, const std::string &body) const;
     Response check(const std::string &body) const;
     Response run(const std::string &body) const;
+    Response decode(const std::string &body) const;
 
     Options opt_;
 };

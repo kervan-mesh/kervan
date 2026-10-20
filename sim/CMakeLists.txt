@@ -42,6 +42,12 @@ foreach(file ${KSIM_DEVICE_FILES})
 endforeach()
 configure_file(src/devices_builtin.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/devices_builtin.cpp @ONLY)
 
+# The helper that runs Python payload functions, embedded so ksim needs no file next to it.
+set(KSIM_PAYLOAD_PY_FILE ${CMAKE_CURRENT_SOURCE_DIR}/remote/python/ksim_payload.py)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${KSIM_PAYLOAD_PY_FILE})
+file(READ ${KSIM_PAYLOAD_PY_FILE} KSIM_PAYLOAD_PY)
+configure_file(src/payload_helper.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/payload_helper.cpp @ONLY)
+
 # C ABI only: what a stack needs to plug in. No C++ and no Kervan dependency.
 add_library(ksim_api INTERFACE)
 target_include_directories(ksim_api INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -53,6 +59,7 @@ add_library(ksim_core
     src/json_util.cpp
     src/lora.cpp
     src/nrf24.cpp
+    src/payload_scripts.cpp
     src/phy.cpp
     src/remote/net.cpp
     src/remote/process.cpp
@@ -60,6 +67,7 @@ add_library(ksim_core
     src/scenario.cpp
     src/simulator.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/devices_builtin.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/payload_helper.cpp
 )
 target_link_libraries(ksim_core PUBLIC ksim_api PRIVATE nlohmann_json::nlohmann_json kervan_warnings)
 target_compile_features(ksim_core PUBLIC cxx_std_20)

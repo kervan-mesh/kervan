@@ -18,6 +18,7 @@ add_executable(ksim_tests
     test_nrf24.cpp
     test_remote.cpp
     test_rng.cpp
+    test_payload.cpp
     test_scenario.cpp
     test_serve.cpp
     test_sim.cpp

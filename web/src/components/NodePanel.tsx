@@ -17,6 +17,7 @@ import {
   type NodeDoc,
   type ScenarioDoc,
 } from '../model/scenario';
+import { PayloadEditor } from './PayloadEditor';
 import { KeyValueForm, SchemaForm } from './SchemaForm';
 
 interface Props {
@@ -186,6 +187,17 @@ export function NodePanel(props: Props) {
       </div>
       {node.process !== undefined && (
         <p className="hint">This node’s stack runs in its own process (“process” in the file).</p>
+      )}
+
+      <h3>Payload</h3>
+      {node.process !== undefined ? (
+        <p className="hint">Out-of-process nodes make their own payloads.</p>
+      ) : (
+        <PayloadEditor
+          payload={node.payload}
+          pythonAllowed={catalog.info.allow_processes}
+          onChange={(p) => set(withField(node, 'payload', p))}
+        />
       )}
 
       <h3>Radio ({radio.type})</h3>

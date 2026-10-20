@@ -161,3 +161,19 @@ export const checkScenario = (doc: ScenarioDoc) =>
 
 export const runScenario = (doc: ScenarioDoc) =>
   request<RunResult>('POST', '/api/run', JSON.stringify(doc));
+
+export interface FrameField {
+  name: string;
+  value: string;
+  offset?: number; // bytes the field covers
+  len?: number;
+}
+
+// The sending stack's description of a frame; null when it has no decoder or does not
+// understand the frame.
+export const decodeFrame = (stack: string, config: Record<string, unknown> | undefined, data: string) =>
+  request<{ fields: FrameField[] | null }>(
+    'POST',
+    '/api/decode',
+    JSON.stringify({ stack, config: config ?? {}, data }),
+  );

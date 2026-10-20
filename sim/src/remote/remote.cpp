@@ -92,7 +92,7 @@ void r_on_timer(void *inst, uint32_t timer_id)
 
 const ksim_stack_t kRemoteVtable = {KSIM_ABI_VERSION, "remote",     "1",       r_create,
                                     r_destroy,        r_on_rx,      r_on_tx_done, r_on_timer,
-                                    nullptr};
+                                    nullptr, nullptr};
 
 } // namespace
 

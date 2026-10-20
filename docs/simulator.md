@@ -19,7 +19,7 @@ carry a version that is recorded in every trace.
 ├───────────────────────┴──────────────────────────────┤
 │  Device profiles: board = MCU + radio + limits (JSON) │
 ├──────────────────────────────────────────────────────┤
-│  Stack adapter interface (C ABI v3, ksim/stack.h)     │
+│  Stack adapter interface (C ABI v4, ksim/stack.h)     │
 ├─────────────┬──────────────────┬─────────────────────┤
 │  kervan v2  │  nrf24-esb v1    │ …                   │
 └─────────────┴──────────────────┴─────────────────────┘
@@ -112,7 +112,7 @@ Adding a board needs no code.
 nRF24L01+). Limits are enforced when the scenario is loaded and when a stack changes the radio at
 run time. Bump `version` whenever a change could alter results.
 
-## Stack adapter interface (C ABI v3)
+## Stack adapter interface (C ABI v4)
 
 Declared in [`sim/include/ksim/stack.h`](../sim/include/ksim/stack.h). A stack provides
 `ksim_stack_t` (name, version, create/destroy an instance per node, `on_rx`, `on_tx_done`,
@@ -127,8 +127,8 @@ Declared in [`sim/include/ksim/stack.h`](../sim/include/ksim/stack.h). A stack p
   PHY and the device profile; changes are refused while transmitting.
 - `trace` lets stacks report application events, which tests and the summary count.
 - `abi_version` guards incompatible changes: v1 initial, v2 added radio control and stack versions,
-  v3 the config schema. Out-of-process stacks may still report ABI 2 (the wire protocol did not
-  change).
+  v3 the config schema, v4 `app_payload` and `describe_frame`. Out-of-process stacks may report
+  ABI 2 to 4 (the wire protocol did not change).
 - Stacks are never called back synchronously from a host function: `on_tx_done` and `on_timer`
   always arrive as separate events.
 
@@ -242,20 +242,53 @@ one `kv_stats` line per node at the end.
 
 See [nrf24-esb.md](nrf24-esb.md#stack-config).
 
+## Payloads
+
+By default a stack's traffic generator makes up its own test data (`len` bytes). A node can set
+what it sends instead:
+
+```json
+{ "id": 2, "pos": [5, 0], "device": "arduino-nrf24l01p", "stack": "nrf24-esb",
+  "config": { "send_to": "0xE7E7E7E701", "send_every_ms": 2000 },
+  "payload": { "hex": "01 A2 FF 00" } }
+```
+
+```json
+"payload": { "python": "def payload(node, seq, t):\n    return struct.pack('<Hf', node, 20.0 + rng.random())" }
+```
+
+- `hex`: the same bytes in every message (whitespace allowed, optional `0x`).
+- `python`: a function `payload(node, seq, t)` returning `bytes` (or a list of 0..255, or a hex
+  string); `seq` counts the node's messages from 0, `t` is virtual time in seconds. `rng` is a
+  `random.Random` seeded from the scenario seed and the node id, so runs stay reproducible;
+  `struct`, `math` and `random` are imported. ksim runs all functions in one helper process
+  (`python_interpreter()`: `KSIM_PYTHON`, else `python`/`python3`). An exception stops the run
+  with the error and line. In `ksim serve` Python payloads need `--allow-processes`.
+- Stacks get the payload through `ksim_host_t::app_payload`; one that is longer than the stack
+  can carry (Kervan 254 bytes, nRF24 ESB 32 or less with a small MTU) stops the run with an
+  error. Not available for out-of-process nodes yet.
+- With nRF24 ESB, two senders with identical payloads on one pipe look like retransmissions to
+  the receiver (same PID and CRC): put something node-specific into the payload.
+
+Every `tx` line of the trace carries the frame bytes (`data`), and stacks may decode frames for
+packet inspectors (`ksim_stack_t::describe_frame`, helper `ksim/frame_fields.h`).
+
 ## Trace format
 
 JSON Lines, one event per line. The first line records the versions of everything that produced
 the run:
 
 ```json
-{"t":0,"ev":"meta","ksim":"0.1.0","abi":3,"phy":{"lora":"1"},"stack":{"kervan":"2"},"device":{"esp32-sx1276":"1"}}
-{"t":1520384,"ev":"tx","node":1,"len":18,"airtime":185344}
+{"t":0,"ev":"meta","ksim":"0.1.0","abi":4,"format":2,"phy":{"lora":"1"},"stack":{"kervan":"2"},"device":{"esp32-sx1276":"1"}}
+{"t":1520384,"ev":"tx","node":1,"len":20,"airtime":185344,"data":"02600102000100db69e400010203040506070809"}
 {"t":1705728,"ev":"rx","node":2,"from":1,"rssi":-101.23,"snr":15.8}
 {"t":1705728,"ev":"lost","node":3,"from":1,"reason":"collision"}
 {"t":1705728,"ev":"app","node":2,"name":"app_rx","detail":"from=1 seq=7 len=10"}
 ```
 
 Loss reasons: `collision`, `half_duplex`, `rx_off`.
+`format` is the trace format version: 2 adds `data` (frame bytes, hex) to `tx`; traces without it
+are format 1.
 
 ## Extending ksim
 

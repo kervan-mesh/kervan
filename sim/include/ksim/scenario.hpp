@@ -25,4 +25,8 @@ Scenario parse_scenario(const std::string &json_text, const DeviceRegistry &devi
 Scenario load_scenario_file(const std::string &path, const DeviceRegistry &devices);
 Scenario load_scenario_file(const std::string &path); // built-in devices
 
+// The interpreter for "${python}" and Python payloads: KSIM_PYTHON if set, else "python" on
+// Windows and "python3" elsewhere.
+std::string python_interpreter();
+
 } // namespace ksim

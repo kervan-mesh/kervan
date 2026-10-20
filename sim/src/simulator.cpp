@@ -15,6 +15,7 @@
 #include <nlohmann/json.hpp>
 
 #include "ksim/rng.hpp"
+#include "payload_scripts.hpp"
 #include "remote/remote.hpp"
 
 namespace ksim {
@@ -29,6 +30,9 @@ namespace {
 constexpr uint64_t kTagNode = 0x6E6F6465u;   // per-node random stream
 constexpr uint64_t kTagShadow = 0x73686164u; // per-link shadowing
 
+// Trace format version in the meta line: 1 (no "format" key) initial, 2 frame bytes in "tx".
+constexpr int kTraceFormat = 2;
+
 // Signal levels are rounded before any decision so libm differences cannot flip an outcome.
 double round_db(double v)
 {
@@ -38,6 +42,17 @@ double round_db(double v)
 bool overlaps(Time s1, Time e1, Time s2, Time e2)
 {
     return s1 < e2 && s2 < e1;
+}
+
+std::string to_hex(const uint8_t *buf, size_t len)
+{
+    static const char digits[] = "0123456789abcdef";
+    std::string out(2 * len, '0');
+    for (size_t i = 0; i < len; i++) {
+        out[2 * i] = digits[buf[i] >> 4];
+        out[2 * i + 1] = digits[buf[i] & 0xF];
+    }
+    return out;
 }
 
 } // namespace
@@ -91,6 +106,9 @@ struct Simulator::Impl {
     std::function<void(uint32_t, uint16_t)> on_wait;
     std::unique_ptr<RemoteHub> hub;
     std::map<uint32_t, std::unique_ptr<RemoteNode>> remotes;
+
+    std::unique_ptr<PayloadScripts> scripts; // Python payload functions, if any node has one
+    std::string fatal;                       // set by a host function to end the run with an error
 
     void emit(const nlohmann::ordered_json &line)
     {
@@ -159,6 +177,7 @@ struct Simulator::Impl {
         auto j = event("tx", n);
         j["len"] = len;
         j["airtime"] = airtime;
+        j["data"] = to_hex(buf, len);
         emit(j);
 
         recent.push_back(tx);
@@ -311,6 +330,7 @@ struct Simulator::Impl {
         j["ev"] = "meta";
         j["ksim"] = version();
         j["abi"] = KSIM_ABI_VERSION;
+        j["format"] = kTraceFormat;
         nlohmann::ordered_json phys = nlohmann::ordered_json::object();
         nlohmann::ordered_json stks = nlohmann::ordered_json::object();
         nlohmann::ordered_json devs = nlohmann::ordered_json::object();
@@ -391,6 +411,34 @@ struct Simulator::Impl {
     {
         return node(ctx).sim->radio_set(node(ctx), param, value);
     }
+
+    static int h_app_payload(void *ctx, uint32_t seq, uint8_t *buf, size_t cap)
+    {
+        Node &n = node(ctx);
+        Impl &s = *n.sim;
+        if (!n.spec.payload || !s.fatal.empty()) {
+            return -1;
+        }
+        try {
+            const PayloadSpec &p = *n.spec.payload;
+            const std::vector<uint8_t> data =
+                p.python.empty() ? p.bytes : s.scripts->call(n.spec.id, seq, s.queue.now());
+            if (data.size() > cap) {
+                throw std::runtime_error("node " + std::to_string(n.spec.id) + ": payload of " +
+                                         std::to_string(data.size()) + " bytes, stack '" +
+                                         n.stack_name + "' takes at most " + std::to_string(cap));
+            }
+            if (!data.empty() && buf != nullptr) {
+                std::copy(data.begin(), data.end(), buf);
+            }
+            return static_cast<int>(data.size());
+        } catch (const std::exception &e) {
+            // a C stack cannot take an exception: stop the run and report after it returns
+            s.fatal = e.what();
+            s.queue.stop();
+            return -1;
+        }
+    }
 };
 
 Simulator::Simulator(Scenario scenario) : impl_(std::make_unique<Impl>())
@@ -410,6 +458,10 @@ Simulator::Simulator(Scenario scenario) : impl_(std::make_unique<Impl>())
         }
         if (spec.process && spec.process->spawn.empty() == !spec.process->wait) {
             throw std::invalid_argument(where + "process needs either spawn or wait");
+        }
+        if (spec.process && spec.payload) {
+            throw std::invalid_argument(where +
+                                        "payloads are not supported for out-of-process nodes yet");
         }
     }
     if (scenario.mtu == 0 || scenario.mtu > 255) {
@@ -491,6 +543,7 @@ Summary Simulator::run()
         n->host.trace = Impl::h_trace;
         n->host.radio_get = Impl::h_radio_get;
         n->host.radio_set = Impl::h_radio_set;
+        n->host.app_payload = Impl::h_app_payload;
         s.index_of[spec.id] = s.nodes.size();
         s.nodes.push_back(std::move(n));
     }
@@ -509,6 +562,16 @@ Summary Simulator::run()
     s.emit_meta();
 
     try {
+        std::map<uint32_t, std::string> code;
+        for (const NodeSpec &spec : s.scn.nodes) {
+            if (spec.payload && !spec.payload->python.empty()) {
+                code[spec.id] = spec.payload->python;
+            }
+        }
+        if (!code.empty()) {
+            s.scripts = std::make_unique<PayloadScripts>(code, s.scn.seed);
+        }
+
         for (auto &n : s.nodes) {
             if (n->remote != nullptr) {
                 n->inst = n->remote->create(&n->host, s.queue.now(), n->spec.config) ? n->remote
@@ -524,6 +587,9 @@ Summary Simulator::run()
         }
 
         s.queue.run_until(s.scn.duration_us);
+        if (!s.fatal.empty()) {
+            throw std::runtime_error(s.fatal);
+        }
 
         for (auto &n : s.nodes) {
             n->stack->destroy(n->inst);

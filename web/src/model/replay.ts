@@ -15,6 +15,7 @@ export interface Tx {
   node: number;
   len: number;
   relay: boolean; // the stack reported a relay at the same instant
+  data: string; // frame bytes, hex ("" in traces before format 2)
 }
 
 export type LossReason = 'collision' | 'half_duplex' | 'rx_off' | string;
@@ -63,7 +64,14 @@ export function buildReplay(trace: TraceLine[], duration: number): Replay {
       case 'tx': {
         const airtime = Number(line.airtime);
         maxAirtime = Math.max(maxAirtime, airtime);
-        txs.push({ t: line.t, end: line.t + airtime, node, len: Number(line.len), relay: false });
+        txs.push({
+          t: line.t,
+          end: line.t + airtime,
+          node,
+          len: Number(line.len),
+          relay: false,
+          data: typeof line.data === 'string' ? line.data : '',
+        });
         break;
       }
       case 'rx':
@@ -238,3 +246,22 @@ export const LOSS_LABEL: Record<string, string> = {
   half_duplex: 'half-duplex (was transmitting)',
   rx_off: 'receiver off',
 };
+
+// The frame a reception (or loss) belongs to: sent by rx.from, ending when rx happened.
+export function txOfReception(r: Replay, rx: Rx): Tx | undefined {
+  for (let i = lowerBound(r.txs, rx.t - r.maxAirtime); i < r.txs.length; i++) {
+    const tx = r.txs[i]!;
+    if (tx.t > rx.t) {
+      break;
+    }
+    if (tx.node === rx.from && tx.end === rx.t) {
+      return tx;
+    }
+  }
+  return undefined;
+}
+
+// Everyone who heard a frame, and how it went.
+export function receptionsOf(r: Replay, tx: Tx): Rx[] {
+  return between(r.rxs, tx.end, tx.end).filter((rx) => rx.from === tx.node);
+}

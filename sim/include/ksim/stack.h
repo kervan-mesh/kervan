@@ -21,9 +21,10 @@ extern "C" {
  *   1  initial
  *   2  radio_get/radio_set, ksim_stack_t::version
  *   3  ksim_stack_t::config_schema
+ *   4  ksim_host_t::app_payload, ksim_stack_t::describe_frame
  */
 
-#define KSIM_ABI_VERSION 3u
+#define KSIM_ABI_VERSION 4u
 #define KSIM_ABI_VERSION_MIN_REMOTE 2u /* oldest ABI an out-of-process stack may report */
 
 /* Results */
@@ -67,6 +68,14 @@ typedef struct {
     void (*trace)(void *ctx, const char *event, const char *detail);
     int (*radio_get)(void *ctx, uint32_t param, int64_t *value);
     int (*radio_set)(void *ctx, uint32_t param, int64_t value);
+
+    /*
+     * The payload the scenario sets for this node's next application message ("payload" in the
+     * scenario, docs/simulator.md): fills buf with up to cap bytes and returns the length. Returns
+     * -1 when the scenario sets none; the stack then makes up its own. seq counts the node's
+     * messages from 0. A payload longer than cap stops the run with an error.
+     */
+    int (*app_payload)(void *ctx, uint32_t seq, uint8_t *buf, size_t cap);
 } ksim_host_t;
 
 typedef struct {
@@ -92,6 +101,17 @@ typedef struct {
      * can offer a form. Format in docs/simulator.md ("Config schema").
      */
     const char *config_schema;
+
+    /*
+     * Optional (may be NULL): describe a frame for packet inspectors. config is the sending
+     * node's config string. Writes a NUL-terminated JSON array of fields to out (at most cap
+     * bytes, including the NUL):
+     *   [{"name": "src", "value": "3", "offset": 5, "len": 2}, ...]
+     * offset/len give the bytes a field covers (leave them out for derived values). Returns the
+     * length written, or 0 if the frame is not understood or does not fit.
+     */
+    size_t (*describe_frame)(const char *config, const uint8_t *buf, size_t len, char *out,
+                             size_t cap);
 } ksim_stack_t;
 
 #ifdef __cplusplus

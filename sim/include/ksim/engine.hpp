@@ -30,18 +30,22 @@ public:
     uint64_t run_until(Time end)
     {
         uint64_t count = 0;
-        while (!heap_.empty() && heap_.top().at <= end) {
+        stopped_ = false;
+        while (!stopped_ && !heap_.empty() && heap_.top().at <= end) {
             Event ev = heap_.top();
             heap_.pop();
             now_ = ev.at;
             ev.fn();
             count++;
         }
-        if (end > now_) {
+        if (!stopped_ && end > now_) {
             now_ = end;
         }
         return count;
     }
+
+    // Make run_until return after the current event (e.g. on a fatal error); now() stays put.
+    void stop() { stopped_ = true; }
 
     Time now() const { return now_; }
     bool empty() const { return heap_.empty(); }
@@ -62,6 +66,7 @@ private:
     std::priority_queue<Event, std::vector<Event>, Later> heap_;
     Time now_ = 0;
     uint64_t next_seq_ = 0;
+    bool stopped_ = false;
 };
 
 } // namespace ksim

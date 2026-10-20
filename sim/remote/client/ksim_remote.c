@@ -279,6 +279,17 @@ static int h_radio_get(void *ctx, uint32_t param, int64_t *value)
     return status;
 }
 
+/* Payloads come only from in-process scenarios for now (ksim refuses "payload" on remote nodes): the
+ * stack uses its own. */
+static int h_app_payload(void *ctx, uint32_t seq, uint8_t *buf, size_t cap)
+{
+    (void)ctx;
+    (void)seq;
+    (void)buf;
+    (void)cap;
+    return -1;
+}
+
 static int h_radio_set(void *ctx, uint32_t param, int64_t value)
 {
     client_t *c = (client_t *)ctx;
@@ -433,6 +444,7 @@ int ksim_remote_serve(const ksim_stack_t *stack, uint16_t port, uint32_t node_id
     c->host.trace = h_trace;
     c->host.radio_get = h_radio_get;
     c->host.radio_set = h_radio_set;
+    c->host.app_payload = h_app_payload;
 
     result = serve(c, stack, node_id);
     close_sock(c->sock);

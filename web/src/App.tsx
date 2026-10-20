@@ -6,7 +6,7 @@
 // ksim web UI: edit a scenario on a map, run it in ksim, replay what happened.
 //
 // URL parameters (handy for sharing and screenshots): ?scenario=NAME&run=1&t=SECONDS&speed=X
-// &node=ID&tab=scenario|node|results&play=0
+// &node=ID&tab=scenario|node|results|packet&play=0&frame=NODE@SECONDS (inspect that frame)
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -24,10 +24,11 @@ import {
 } from './api';
 import { Field, type Tool } from './components/Field';
 import { NodePanel } from './components/NodePanel';
+import { PacketPanel } from './components/PacketPanel';
 import { ResultsPanel } from './components/ResultsPanel';
 import { ScenarioPanel } from './components/ScenarioPanel';
 import { SPEEDS, Timeline } from './components/Timeline';
-import { buildReplay, type Replay } from './model/replay';
+import { buildReplay, receptionsOf, type Replay, type Tx } from './model/replay';
 import {
   addNode,
   findNode,
@@ -40,7 +41,7 @@ import {
   type ScenarioDoc,
 } from './model/scenario';
 
-type Tab = 'scenario' | 'node' | 'results';
+type Tab = 'scenario' | 'node' | 'results' | 'packet';
 type Theme = 'auto' | 'light' | 'dark';
 
 const params = new URLSearchParams(window.location.search);
@@ -78,6 +79,7 @@ interface Run {
   result: RunResult;
   replay: Replay;
   docText: string; // the scenario it ran, to notice edits afterwards
+  doc: ScenarioDoc; // the same, parsed: stacks and configs of the senders
 }
 
 export function App() {
@@ -92,6 +94,7 @@ export function App() {
   const [run, setRun] = useState<Run | null>(null);
   const [running, setRunning] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
+  const [packet, setPacket] = useState<Tx | null>(null); // frame open in the inspector
   const [tab, setTab] = useState<Tab>('scenario');
   const [tool, setTool] = useState<Tool>('select');
   const [showLinks, setShowLinks] = useState(true);
@@ -127,14 +130,17 @@ export function App() {
     try {
       const result = await runScenario(d);
       const replay = buildReplay(result.trace, result.summary.duration_us);
-      setRun({ result, replay, docText: JSON.stringify(d) });
+      setRun({ result, replay, docText: JSON.stringify(d), doc: d });
+      setPacket(null);
       setLinks(result.links);
       setProblem(null);
       setTime(Math.min(opts?.t ?? 0, replay.duration));
       setPlaying(opts?.play ?? true);
       setTab((t) => (t === 'scenario' ? 'results' : t));
+      return replay;
     } catch (e) {
       setProblem(errorText(e));
+      return null;
     } finally {
       setRunning(false);
     }
@@ -146,6 +152,7 @@ export function App() {
       setName(n);
       setDirty(false);
       setRun(null);
+      setPacket(null);
       setSelected(null);
       setTime(0);
       setPlaying(false);
@@ -178,9 +185,21 @@ export function App() {
           setTab(t);
         }
         if (params.get('run') === '1') {
-          await startRun(d, { t: Number(params.get('t') ?? 0) * 1e6, play: params.get('play') !== '0' });
+          const replay = await startRun(d, {
+            t: Number(params.get('t') ?? 0) * 1e6,
+            play: params.get('play') !== '0',
+          });
           if (t) {
             setTab(t as Tab);
+          }
+          // frame=NODE@SECONDS: that node's first frame at or after that time, in the inspector
+          const frame = /^(\d+)@([\d.]+)$/.exec(params.get('frame') ?? '');
+          const tx =
+            frame &&
+            replay?.txs.find((x) => x.node === Number(frame[1]) && x.t >= Number(frame[2]) * 1e6);
+          if (tx) {
+            setPacket(tx);
+            setTab('packet');
           }
         }
       } catch (e) {
@@ -427,6 +446,7 @@ export function App() {
           showLinks={showLinks}
           showLosses={showLosses}
           showDistances={showDistances}
+          packet={packet && replay ? { tx: packet, rxs: receptionsOf(replay, packet) } : null}
           replay={replay}
           time={time}
           window={window_us}
@@ -518,6 +538,14 @@ export function App() {
             >
               Results
             </button>
+            <button
+              className={tab === 'packet' ? 'active' : undefined}
+              onClick={() => setTab('packet')}
+              disabled={!run}
+              title="Click a frame in the event list to inspect it"
+            >
+              Packet
+            </button>
           </nav>
           {tab === 'scenario' && (
             <ScenarioPanel doc={doc} catalog={catalog} selected={selected} onChange={edit} onSelect={select} />
@@ -545,6 +573,22 @@ export function App() {
             ) : (
               <div className="empty">Select a node on the map.</div>
             ))}
+          {tab === 'packet' &&
+            run &&
+            (packet ? (
+              <PacketPanel
+                replay={run.replay}
+                tx={packet}
+                doc={run.doc}
+                onSeek={(t) => {
+                  setPlaying(false);
+                  setTime(t);
+                }}
+                onSelectNode={setSelected}
+              />
+            ) : (
+              <div className="empty">Click a frame (tx, rx or lost) in the event list below.</div>
+            ))}
           {tab === 'results' && run && (
             <ResultsPanel result={run.result} replay={run.replay} selected={selected} onSelect={setSelected} />
           )}
@@ -562,6 +606,10 @@ export function App() {
           onPlay={setPlaying}
           onSpeed={setSpeed}
           onSelect={setSelected}
+          onPacket={(tx) => {
+            setPacket(tx);
+            setTab('packet');
+          }}
         />
       ) : (
         <div className="timeline">

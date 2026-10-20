@@ -169,4 +169,41 @@ json radio_json(const RadioConfig &r)
     return j;
 }
 
+namespace {
+
+std::string config_value(const json &v, const std::string &where)
+{
+    std::string s;
+    if (v.is_boolean()) {
+        s = v.get<bool>() ? "1" : "0";
+    } else if (v.is_number()) {
+        s = v.dump();
+    } else if (v.is_string()) {
+        s = v.get<std::string>();
+    } else {
+        fail(where, "must be a number, string or boolean");
+    }
+    if (s.find_first_of(";=") != std::string::npos) {
+        fail(where, "must not contain ';' or '='");
+    }
+    return s;
+}
+
+} // namespace
+
+std::string config_string(const json &cfg, const std::string &where)
+{
+    if (!cfg.is_object()) {
+        fail(where, "must be an object");
+    }
+    std::string out;
+    for (const auto &item : cfg.items()) {
+        if (!out.empty()) {
+            out += ';';
+        }
+        out += item.key() + "=" + config_value(item.value(), where + "." + item.key());
+    }
+    return out;
+}
+
 } // namespace ksim::json_util

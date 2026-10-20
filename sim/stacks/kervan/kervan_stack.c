@@ -18,6 +18,7 @@
 
 #include "kervan/node.h"
 #include "kervan/topic.h"
+#include "ksim/frame_fields.h"
 
 enum { TIMER_NODE = 1, TIMER_APP = 2 };
 
@@ -137,15 +138,24 @@ static void app_send(kstack_t *s)
     uint8_t seq = 0;
     kv_status_t st;
     uint32_t i;
+    uint32_t len = s->len;
+    /* the scenario's payload if it sets one, else counter bytes of the configured length */
+    int given = s->host.app_payload != NULL
+                    ? s->host.app_payload(s->host.ctx, s->sent, payload, KV_MAX_MSG_SIZE - 2u)
+                    : -1;
 
-    for (i = 0; i < s->len; i++) {
-        payload[i] = (uint8_t)(s->sent + i);
+    if (given >= 0) {
+        len = (uint32_t)given;
+    } else {
+        for (i = 0; i < len; i++) {
+            payload[i] = (uint8_t)(s->sent + i);
+        }
     }
     s->sent++;
-    st = kv_node_publish(&s->node, s->send_to, s->topic, payload, s->len, s->qos, &seq);
+    st = kv_node_publish(&s->node, s->send_to, s->topic, payload, len, s->qos, &seq);
     if (st == KV_OK) {
         snprintf(detail, sizeof(detail), "to=%u seq=%u len=%u qos=%u", (unsigned)s->send_to,
-                 (unsigned)seq, (unsigned)s->len, (unsigned)s->qos);
+                 (unsigned)seq, (unsigned)len, (unsigned)s->qos);
         s->host.trace(s->host.ctx, "app_tx", detail);
     } else {
         snprintf(detail, sizeof(detail), "to=%u status=%d", (unsigned)s->send_to, (int)st);
@@ -349,6 +359,111 @@ static void ks_on_timer(void *inst, uint32_t timer_id)
     sync(s);
 }
 
+/* ---- frame decoder for packet inspectors ---- */
+
+/* Value of `key` in a "k=v;k=v" config string into buf; false if absent. */
+static bool config_get(const char *config, const char *key, char *buf, size_t cap)
+{
+    size_t klen = strlen(key);
+    const char *p = config;
+
+    while (p != NULL && *p != '\0') {
+        const char *end = strchr(p, ';');
+        size_t n = end != NULL ? (size_t)(end - p) : strlen(p);
+        if (n > klen && strncmp(p, key, klen) == 0 && p[klen] == '=') {
+            size_t vlen = n - klen - 1u;
+            if (vlen >= cap) {
+                vlen = cap - 1u;
+            }
+            memcpy(buf, p + klen + 1u, vlen);
+            buf[vlen] = '\0';
+            return true;
+        }
+        p = end != NULL ? end + 1 : NULL;
+    }
+    return false;
+}
+
+/* "0x1234 (name)" if the sender's config names a topic with this id. */
+static void topic_text(const char *config, uint16_t id, char *out, size_t cap)
+{
+    static const char *const keys[] = {"topic", "subscribe"};
+    char name[64];
+    size_t k;
+
+    snprintf(out, cap, "0x%04x", (unsigned)id);
+    for (k = 0; k < 2u; k++) {
+        if (!config_get(config != NULL ? config : "", keys[k], name, sizeof(name))) {
+            snprintf(name, sizeof(name), "%s", DEFAULT_TOPIC);
+        }
+        if (kv_topic_id(name) == id) {
+            snprintf(out, cap, "0x%04x (%.48s)", (unsigned)id, name);
+            return;
+        }
+    }
+}
+
+static size_t ks_describe(const char *config, const uint8_t *buf, size_t len, char *out,
+                          size_t cap)
+{
+    static const char *const types[16] = {"DATA", "ACK", "CTRL", "type 3", "type 4", "type 5",
+                                          "type 6", "type 7", "type 8", "type 9", "type 10",
+                                          "type 11", "type 12", "type 13", "type 14", "EXT"};
+    kv_frame_t f;
+    ksim_fields_t w;
+    char v[80];
+    int hl;
+    int rest;
+
+    if (kv_frame_decode(buf, len, &f) != KV_OK) {
+        return 0;
+    }
+    hl = (int)kv_frame_header_len(&f.hdr);
+    rest = (int)f.payload_len;
+    ksim_fields_begin(&w, out, cap);
+    ksim_field(&w, "version", "0", 0, 1);
+    snprintf(v, sizeof(v), "%s (%u)", types[f.hdr.type & 0xFu], (unsigned)f.hdr.type);
+    ksim_field(&w, "type", v, 0, 1);
+    ksim_field(&w, "ack_req", f.hdr.ack_req ? "yes" : "no", 0, 1);
+    ksim_field(&w, "fragmented", f.hdr.frag ? "yes" : "no", 0, 1);
+    snprintf(v, sizeof(v), "%u", (unsigned)f.hdr.hop_limit);
+    ksim_field(&w, "hop_limit", v, 1, 1);
+    snprintf(v, sizeof(v), "%u", (unsigned)f.hdr.hop_count);
+    ksim_field(&w, "hop_count", v, 1, 1);
+    ksim_field(&w, "secured", f.hdr.sec ? "yes" : "no", 1, 1);
+    snprintf(v, sizeof(v), "%u", (unsigned)f.hdr.net_id);
+    ksim_field(&w, "net_id", v, 2, 1);
+    if (f.hdr.dst == KV_ADDR_BROADCAST) {
+        snprintf(v, sizeof(v), "%u (broadcast)", (unsigned)f.hdr.dst);
+    } else {
+        snprintf(v, sizeof(v), "%u", (unsigned)f.hdr.dst);
+    }
+    ksim_field(&w, "dst", v, 3, 2);
+    snprintf(v, sizeof(v), "%u", (unsigned)f.hdr.src);
+    ksim_field(&w, "src", v, 5, 2);
+    snprintf(v, sizeof(v), "%u", (unsigned)f.hdr.seq);
+    ksim_field(&w, "seq", v, 7, 1);
+    if (f.hdr.frag) {
+        snprintf(v, sizeof(v), "%u of %u", (unsigned)f.hdr.frag_index + 1u,
+                 (unsigned)f.hdr.frag_last + 1u);
+        ksim_field(&w, "fragment", v, 8, 1);
+    }
+
+    if (f.hdr.type == KV_FRAME_DATA && (!f.hdr.frag || f.hdr.frag_index == 0u) && rest >= 2) {
+        topic_text(config, (uint16_t)(f.payload[0] | (f.payload[1] << 8)), v, sizeof(v));
+        ksim_field(&w, "topic", v, hl, 2);
+        snprintf(v, sizeof(v), "%d bytes", rest - 2);
+        ksim_field(&w, "data", v, hl + 2, rest - 2);
+    } else if (f.hdr.type == KV_FRAME_ACK && rest >= 1) {
+        snprintf(v, sizeof(v), "%u", (unsigned)f.payload[0]);
+        ksim_field(&w, "acked_seq", v, hl, 1);
+    } else if (rest > 0) {
+        snprintf(v, sizeof(v), "%d bytes", rest);
+        ksim_field(&w, f.hdr.type == KV_FRAME_DATA ? "data (continued)" : "payload", v, hl, rest);
+    }
+    return ksim_fields_end(&w);
+}
+
 /* Options accepted by ks_create, for tools such as the web UI (docs/simulator.md). Keep the
  * defaults in sync with kv_node_config_default and ks_create; a test checks them. */
 static const char config_schema[] =
@@ -391,6 +506,6 @@ const ksim_stack_t *ksim_stack_kervan(void)
 {
     static const ksim_stack_t stack = {KSIM_ABI_VERSION, "kervan",      "2",        ks_create,
                                        ks_destroy,       ks_on_rx,      ks_on_tx_done, ks_on_timer,
-                                       config_schema};
+                                       config_schema, ks_describe};
     return &stack;
 }

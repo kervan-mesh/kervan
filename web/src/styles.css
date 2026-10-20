@@ -598,3 +598,125 @@ table.stats tbody tr {
     padding-right: 16px;
   }
 }
+
+/* ---- payload editor, packet inspector ---- */
+
+.segmented {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.segmented label {
+  flex: 1;
+  text-align: center;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-right: 1px solid var(--border);
+}
+
+.segmented label:last-child {
+  border-right: none;
+}
+
+.segmented label.on {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.segmented input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+textarea.code,
+code {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 12px;
+}
+
+textarea.code {
+  tab-size: 4;
+  white-space: pre;
+}
+
+textarea.invalid {
+  border-color: var(--danger);
+}
+
+.dump {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.dump .off {
+  color: var(--muted);
+  margin-right: 8px;
+}
+
+.dump .b {
+  display: inline-block;
+  width: 2.4ch;
+  text-align: center;
+  border-radius: 2px;
+  cursor: default;
+}
+
+.dump .b.hl {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.dump .ascii {
+  color: var(--muted);
+  margin-left: 8px;
+  letter-spacing: 0.05em;
+}
+
+table.stats tr.hl td {
+  background: var(--panel-2);
+  color: var(--accent);
+}
+
+button.expand {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 0 6px;
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  padding: 16px;
+}
+
+.modal-box {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  width: min(900px, 100%);
+  height: min(640px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.modal-box textarea {
+  flex: 1;
+  resize: none;
+  font-size: 13px;
+}
