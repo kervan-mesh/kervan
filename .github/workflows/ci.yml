@@ -20,7 +20,7 @@ jobs:
           - os: windows-latest
             cc: msvc
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Configure
         shell: bash
@@ -39,7 +39,7 @@ jobs:
     name: arm-none-eabi (Cortex-M4)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install toolchain
         run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi
       - name: Build core

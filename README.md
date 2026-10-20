@@ -60,6 +60,18 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
+### Dev container (recommended)
+
+The repository ships a ready-to-use environment in [`.devcontainer/`](.devcontainer/) with GCC, Clang,
+Ninja, CMake and the `arm-none-eabi` cross toolchain — the same compilers CI uses.
+
+- **VS Code:** install the *Dev Containers* extension, open the folder, choose *Reopen in Container*.
+- **Plain Docker:**
+  ```sh
+  docker build -t kervan-dev .devcontainer
+  docker run --rm -it -v "$PWD:/workspaces/kervan" kervan-dev
+  ```
+
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE).

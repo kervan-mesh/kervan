@@ -1,0 +1,22 @@
+{
+  "name": "Kervan",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "remoteUser": "ubuntu",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cmake-tools",
+        "ms-vscode.cpptools",
+        "xaver.clang-format",
+        "editorconfig.editorconfig"
+      ],
+      "settings": {
+        "cmake.generator": "Ninja",
+        "cmake.configureOnOpen": true
+      }
+    }
+  },
+  "postCreateCommand": "cmake --version && gcc --version | head -1 && arm-none-eabi-gcc --version | head -1"
+}
