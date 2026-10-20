@@ -19,7 +19,10 @@ and a hybrid bridge so real devices can join a simulated network. See README.md 
 - First PHY profile: **LoRa** (strictest constraints: tiny payloads, long airtime). BLE, 802.15.4,
   ESP-NOW come later.
 
-Only `core/`, `tests/` and `docs/` exist so far. Wire format: `docs/frame-format.md`.
+Exists so far: `core/` (frame, node, PAL), `port/udp/` (PC port, peer lists define topology),
+`examples/udp_demo/`, `tests/`, `fuzz/`, `docs/`. Wire format: `docs/frame-format.md`.
+Ports drive the node from their main loop (`kv_node_on_rx/on_tx_done/tick`, `next_deadline`) and
+never call core from inside a PAL callback or an interrupt.
 
 ## Conventions
 
@@ -35,7 +38,9 @@ Only `core/`, `tests/` and `docs/` exist so far. Wire format: `docs/frame-format
   (GCC/Clang) and `/W4` (MSVC). CI uses warnings-as-errors.
 - Formatting: `.clang-format` (LLVM base, 4 spaces, 100 cols, Linux braces).
 - Tests: Unity framework, one `tests/test_<area>.c` per area, registered via `kervan_add_test()`
-  in `tests/CMakeLists.txt`.
+  in `tests/CMakeLists.txt`. Core logic is tested with a mock PAL; `test_udp` uses real sockets.
+  Wire-format tests use hand-computed golden byte arrays. Untrusted-input parsers get a fuzz target
+  in `fuzz/`. Keep core line coverage near 100% (CI fails below 90%).
 - Wire format must be explicit about byte order (little-endian) and never rely on struct layout/packing.
 
 ## Build & test
@@ -62,13 +67,22 @@ cmake -S . -B build-arm -DCMAKE_SYSTEM_NAME=Generic -DCMAKE_C_COMPILER=arm-none-
 cmake --build build-arm && arm-none-eabi-size -t build-arm/core/libkervan_core.a
 ```
 
-CI (`.github/workflows/ci.yml`): GCC, Clang, MSVC, arm-none-eabi on every push/PR.
+Sanitizers, coverage and fuzzing (in the dev container; options also listed in CMakeLists.txt):
+```sh
+CC=clang cmake -S . -B /tmp/b-san -DKERVAN_SANITIZE=ON      # ASan + UBSan, then ctest
+CC=gcc   cmake -S . -B /tmp/b-cov -DKERVAN_COVERAGE=ON      # ctest, then: gcovr -r . --filter core/ --filter port/ /tmp/b-cov
+CC=clang cmake -S . -B /tmp/b-fz -DKERVAN_BUILD_FUZZERS=ON -DKERVAN_BUILD_TESTS=OFF
+/tmp/b-fz/fuzz/fuzz_frame -max_total_time=60                # also fuzz_node
+```
+
+CI (`.github/workflows/ci.yml`): GCC, Clang, MSVC, arm-none-eabi, ASan/UBSan, coverage (≥90% lines),
+60 s fuzzing per target — on every push/PR.
 
 ## Roadmap status
 
 - [x] Phase 0 — repo, CMake, Unity tests, CI, dev container
-- [ ] Phase 1 — **frame format** + PAL; two nodes talk over UDP on a PC  ← next
-- [ ] Phase 2 — discrete-event simulator, LoRa channel model
+- [x] Phase 1 — frame format + PAL; two nodes talk over UDP on a PC
+- [ ] Phase 2 — **discrete-event simulator**, LoRa channel model  ← next
 - [ ] Phase 3 — pub/sub, QoS 1, fragmentation
 - [ ] Phase 4 — multi-hop mesh
 - [ ] Phase 5 — web visualizer

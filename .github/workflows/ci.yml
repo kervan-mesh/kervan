@@ -34,6 +34,73 @@ jobs:
       - name: Test
         run: ctest --test-dir build -C Debug --output-on-failure
 
+  sanitizers:
+    name: ASan + UBSan (clang)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install sanitizer runtime
+        run: sudo apt-get update && sudo apt-get install -y libclang-rt-18-dev
+      - name: Build and test
+        env:
+          CC: clang
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DKERVAN_WARNINGS_AS_ERRORS=ON -DKERVAN_SANITIZE=ON
+          cmake --build build
+          ctest --test-dir build --output-on-failure
+
+  coverage:
+    name: Coverage (gcc)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install gcovr
+        run: sudo apt-get update && sudo apt-get install -y gcovr
+      - name: Build and test
+        env:
+          CC: gcc
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DKERVAN_COVERAGE=ON
+          cmake --build build
+          ctest --test-dir build --output-on-failure
+      - name: Report
+        shell: bash # implies pipefail, so `| tee` does not hide a failed threshold
+        run: |
+          mkdir -p coverage
+          gcovr -r . --filter core/ --filter port/ build --txt-metric branch --html-details coverage/index.html \
+            --fail-under-line 90 | tee -a "$GITHUB_STEP_SUMMARY"
+          gcovr -r . --filter core/ --filter port/ build | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: coverage/
+
+  fuzz:
+    name: Fuzz (libFuzzer, 60 s per target)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install fuzzer runtime
+        run: sudo apt-get update && sudo apt-get install -y libclang-rt-18-dev
+      - name: Build
+        env:
+          CC: clang
+        run: |
+          cmake -S . -B build -DKERVAN_BUILD_FUZZERS=ON -DKERVAN_BUILD_TESTS=OFF \
+            -DKERVAN_WARNINGS_AS_ERRORS=ON
+          cmake --build build
+      - name: Run
+        run: |
+          mkdir -p crashes
+          for t in fuzz_frame fuzz_node; do
+            ./build/fuzz/$t -max_total_time=60 -artifact_prefix=crashes/$t- -print_final_stats=1
+          done
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fuzz-crashes
+          path: crashes/
+
   # The core must also build for a real MCU target (Cortex-M4, like nRF52 / STM32F4).
   cross-arm:
     name: arm-none-eabi (Cortex-M4)

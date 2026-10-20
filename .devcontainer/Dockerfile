@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         clang \
         clang-format \
         clang-tidy \
+        libclang-rt-18-dev \
+        gcovr \
         gdb \
         gcc-arm-none-eabi \
         libnewlib-arm-none-eabi \

@@ -41,8 +41,8 @@ Going "live" means writing a port — the protocol code does not change.
 
 | Phase | Goal |
 |---|---|
-| 0 | Repository, build system, tests, CI ← *we are here* |
-| 1 | Frame format + PAL; two nodes talk over UDP on a PC |
+| 0 | Repository, build system, tests, CI ✅ |
+| 1 | Frame format + PAL; two nodes talk over UDP on a PC ✅ |
 | 2 | Discrete-event simulator with a LoRa channel model |
 | 3 | Pub/sub, QoS 1, fragmentation |
 | 4 | Multi-hop mesh |
@@ -60,6 +60,20 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
+### Try it: two nodes over UDP
+
+Each node listens on its own UDP port on `127.0.0.1` and transmits to the `--peer` ports you give it,
+so the peer lists decide who hears whom. Frames are limited to 51 bytes, like LoRa at SF12.
+
+```sh
+# terminal 1
+build/examples/udp_demo/kervan_udp_demo --addr 1 --port 40001 --peer 40002 --dst 2
+# terminal 2
+build/examples/udp_demo/kervan_udp_demo --addr 2 --port 40002 --peer 40001 --dst 1
+```
+
+(With MSVC the binary is under `build/examples/udp_demo/Debug/`.)
+
 ### Dev container (recommended)
 
 The repository ships a ready-to-use environment in [`.devcontainer/`](.devcontainer/) with GCC, Clang,
@@ -71,6 +85,9 @@ Ninja, CMake and the `arm-none-eabi` cross toolchain — the same compilers CI u
   docker build -t kervan-dev .devcontainer
   docker run --rm -it -v "$PWD:/workspaces/kervan" kervan-dev
   ```
+
+The container also has what CI uses for sanitizers (`-DKERVAN_SANITIZE=ON`), coverage
+(`-DKERVAN_COVERAGE=ON` + `gcovr`) and fuzzing (`-DKERVAN_BUILD_FUZZERS=ON`, Clang).
 
 ## License
 

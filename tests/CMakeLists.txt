@@ -17,3 +17,8 @@ endfunction()
 kervan_add_test(test_frame)
 kervan_add_test(test_node)
 kervan_add_test(test_version)
+
+if(KERVAN_BUILD_PORT_UDP)
+    kervan_add_test(test_udp)
+    target_link_libraries(test_udp PRIVATE kervan::port_udp)
+endif()

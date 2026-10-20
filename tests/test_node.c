@@ -14,12 +14,23 @@
 
 typedef struct {
     uint32_t random_value;
+    bool fail_send; /* radio_send reports an error */
     size_t sent_count;
     uint8_t sent[MOCK_MAX_FRAMES][KV_MTU_MAX];
     size_t sent_len[MOCK_MAX_FRAMES];
+    size_t log_count;
+    kv_log_level_t last_log_level;
 } mock_radio_t;
 
 static uint32_t clock_ms;
+
+static void mock_log(void *ctx, kv_log_level_t level, const char *msg)
+{
+    mock_radio_t *r = (mock_radio_t *)ctx;
+    (void)msg;
+    r->log_count++;
+    r->last_log_level = level;
+}
 
 static uint32_t mock_now(void *ctx)
 {
@@ -30,6 +41,9 @@ static uint32_t mock_now(void *ctx)
 static kv_status_t mock_send(void *ctx, const uint8_t *buf, size_t len)
 {
     mock_radio_t *r = (mock_radio_t *)ctx;
+    if (r->fail_send) {
+        return KV_ERR_BUSY;
+    }
     TEST_ASSERT_TRUE(r->sent_count < MOCK_MAX_FRAMES);
     memcpy(r->sent[r->sent_count], buf, len);
     r->sent_len[r->sent_count] = len;
@@ -90,6 +104,7 @@ static kv_pal_t make_pal(mock_radio_t *r)
     pal.now_ms = mock_now;
     pal.radio_send = mock_send;
     pal.random = mock_random;
+    pal.log = mock_log;
     return pal;
 }
 
@@ -377,6 +392,114 @@ static void test_send_rejects_bad_requests(void)
     TEST_ASSERT_EQUAL_size_t(MTU, radio_a.sent_len[0]);
 }
 
+static void test_ack_dropped_while_radio_busy(void)
+{
+    uint32_t at;
+
+    kv_node_send(&node_b, KV_ADDR_BROADCAST, hello, sizeof(hello), false, NULL); /* B busy */
+    kv_node_send(&node_a, ADDR_B, hello, sizeof(hello), true, NULL);
+    air(&radio_a, &node_a, 0, &node_b);
+
+    TEST_ASSERT_EQUAL_size_t(1, data_count);
+    TEST_ASSERT_EQUAL_size_t(1, radio_b.sent_count); /* only the broadcast, no ACK */
+    TEST_ASSERT_EQUAL_size_t(1, radio_b.log_count);
+    TEST_ASSERT_EQUAL_INT(KV_LOG_WARN, radio_b.last_log_level);
+
+    /* A's retry recovers it */
+    kv_node_on_tx_done(&node_b);
+    TEST_ASSERT_TRUE(kv_node_next_deadline(&node_a, &at));
+    clock_ms = at;
+    kv_node_tick(&node_a);
+    air(&radio_a, &node_a, 1, &node_b);
+    air(&radio_b, &node_b, 1, &node_a);
+    TEST_ASSERT_EQUAL_INT(KV_OK, ack_result);
+    TEST_ASSERT_EQUAL_size_t(1, data_count);
+}
+
+static void test_retry_waits_for_busy_radio(void)
+{
+    uint32_t at;
+
+    kv_node_send(&node_a, ADDR_B, hello, sizeof(hello), true, NULL);
+    kv_node_on_tx_done(&node_a);
+    TEST_ASSERT_TRUE(kv_node_next_deadline(&node_a, &at));
+    kv_node_send(&node_a, KV_ADDR_BROADCAST, hello, sizeof(hello), false, NULL); /* busy */
+    TEST_ASSERT_FALSE(kv_node_next_deadline(&node_a, &at)); /* tx_done will drive it */
+
+    clock_ms = at + 10u;
+    kv_node_tick(&node_a);
+    TEST_ASSERT_EQUAL_size_t(2, radio_a.sent_count); /* deferred */
+    kv_node_on_tx_done(&node_a);
+    TEST_ASSERT_EQUAL_size_t(3, radio_a.sent_count); /* retried right away */
+    TEST_ASSERT_EQUAL_MEMORY(radio_a.sent[0], radio_a.sent[2], radio_a.sent_len[0]);
+}
+
+static void test_radio_send_failure(void)
+{
+    uint32_t at;
+
+    radio_a.fail_send = true;
+    TEST_ASSERT_EQUAL_INT(KV_ERR_BUSY,
+                          kv_node_send(&node_a, ADDR_B, hello, sizeof(hello), true, NULL));
+    TEST_ASSERT_FALSE(kv_node_next_deadline(&node_a, &at)); /* nothing pending */
+
+    /* failure during a retry counts as an attempt and waits another timeout */
+    radio_a.fail_send = false;
+    kv_node_send(&node_a, ADDR_B, hello, sizeof(hello), true, NULL);
+    kv_node_on_tx_done(&node_a);
+    kv_node_next_deadline(&node_a, &at);
+    clock_ms = at;
+    radio_a.fail_send = true;
+    kv_node_tick(&node_a);
+    TEST_ASSERT_TRUE(kv_node_next_deadline(&node_a, &at));
+    TEST_ASSERT_EQUAL_UINT32(clock_ms + TIMEOUT, at);
+}
+
+static void test_unsupported_frames_are_dropped(void)
+{
+    kv_frame_t f;
+    uint8_t buf[16];
+    size_t len;
+
+    memset(&f, 0, sizeof(f));
+    f.hdr.net_id = NET;
+    f.hdr.dst = ADDR_B;
+    f.hdr.src = ADDR_A;
+    f.payload = hello;
+    f.payload_len = sizeof(hello);
+
+    f.hdr.type = KV_FRAME_DATA; /* fragmented: phase 3 */
+    f.hdr.frag = true;
+    f.hdr.frag_last = 1;
+    kv_frame_encode(&f, buf, sizeof(buf), &len);
+    kv_node_on_rx(&node_b, buf, len, NULL);
+    TEST_ASSERT_EQUAL_size_t(1, radio_b.log_count);
+
+    f.hdr.frag = false; /* unknown type */
+    f.hdr.type = 0x7;
+    f.hdr.seq = 1;
+    kv_frame_encode(&f, buf, sizeof(buf), &len);
+    kv_node_on_rx(&node_b, buf, len, NULL);
+
+    kv_node_on_rx(&node_b, buf, 3, NULL); /* garbage */
+    TEST_ASSERT_EQUAL_size_t(0, data_count);
+    TEST_ASSERT_EQUAL_size_t(0, radio_b.sent_count);
+}
+
+static void test_null_arguments_are_safe(void)
+{
+    uint32_t at;
+
+    kv_node_config_default(NULL);
+    kv_node_on_rx(NULL, hello, sizeof(hello), NULL);
+    kv_node_on_tx_done(NULL);
+    kv_node_tick(NULL);
+    TEST_ASSERT_FALSE(kv_node_next_deadline(NULL, &at));
+    TEST_ASSERT_FALSE(kv_node_next_deadline(&node_a, NULL));
+    TEST_ASSERT_EQUAL_INT(KV_ERR_INVALID_ARG, kv_node_send(NULL, ADDR_B, hello, 1, false, NULL));
+    TEST_ASSERT_EQUAL_INT(KV_ERR_INVALID_ARG, kv_node_init(&node_a, NULL, NULL));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -394,5 +517,10 @@ int main(void)
     RUN_TEST(test_busy_while_transmitting);
     RUN_TEST(test_only_one_ack_outstanding);
     RUN_TEST(test_send_rejects_bad_requests);
+    RUN_TEST(test_ack_dropped_while_radio_busy);
+    RUN_TEST(test_retry_waits_for_busy_radio);
+    RUN_TEST(test_radio_send_failure);
+    RUN_TEST(test_unsupported_frames_are_dropped);
+    RUN_TEST(test_null_arguments_are_safe);
     return UNITY_END();
 }

@@ -209,6 +209,7 @@ static void test_decode_rejects_truncated(void)
 {
     kv_frame_t f;
 
+    TEST_ASSERT_EQUAL_INT(KV_ERR_INVALID_ARG, kv_frame_decode(NULL, 8, &f));
     TEST_ASSERT_EQUAL_INT(KV_ERR_TRUNCATED, kv_frame_decode(golden_data, 0, &f));
     TEST_ASSERT_EQUAL_INT(KV_ERR_TRUNCATED,
                           kv_frame_decode(golden_data, KV_FRAME_HEADER_LEN - 1, &f));
