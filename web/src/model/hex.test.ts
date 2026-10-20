@@ -5,7 +5,15 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { asciiChar, byteHex, bytesFromHex, dumpRows, parseHexInput } from './hex';
+import {
+  asciiChar,
+  byteHex,
+  bytesFromHex,
+  bytesToText,
+  dumpRows,
+  parseHexInput,
+  textToHex,
+} from './hex';
 
 describe('hex', () => {
   it('parses payload input like the scenario parser', () => {
@@ -27,5 +35,20 @@ describe('hex', () => {
     ]);
     expect(asciiChar(0x41)).toBe('A');
     expect(asciiChar(0)).toBe('·');
+  });
+});
+
+describe('text payloads', () => {
+  it('turns text into UTF-8 hex and back', () => {
+    expect(textToHex('Hi')).toBe('48 69');
+    expect(textToHex('ş')).toBe('C5 9F');
+    expect(textToHex('')).toBe('');
+    expect(bytesToText(parseHexInput(textToHex('Merhaba dünya\n')).bytes!)).toBe('Merhaba dünya\n');
+    expect(bytesToText([])).toBe('');
+  });
+
+  it('refuses bytes that are not text', () => {
+    expect(bytesToText([0x02, 0xca, 0xfe])).toBeNull(); // invalid UTF-8
+    expect(bytesToText([0x41, 0x00])).toBeNull(); // control character
   });
 });

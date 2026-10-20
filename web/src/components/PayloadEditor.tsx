@@ -8,7 +8,7 @@
 
 import { useState, type KeyboardEvent } from 'react';
 
-import { parseHexInput } from '../model/hex';
+import { bytesToText, parseHexInput, textToHex } from '../model/hex';
 import type { PayloadDoc } from '../model/scenario';
 
 type Mode = 'stack' | 'hex' | 'python';
@@ -61,6 +61,7 @@ export function PayloadEditor({ payload, pythonAllowed, onChange }: Props) {
   };
 
   const hex = mode === 'hex' ? parseHexInput(payload?.hex ?? '') : null;
+  const text = hex?.bytes ? bytesToText(hex.bytes) : null; // the same bytes as text, if they are
 
   return (
     <div>
@@ -88,6 +89,18 @@ export function PayloadEditor({ payload, pythonAllowed, onChange }: Props) {
 
       {mode === 'hex' && (
         <>
+          <input
+            type="text"
+            className="payload-text"
+            aria-label="Payload as text"
+            placeholder={
+              hex?.bytes && hex.bytes.length > 0 && text === null
+                ? 'these bytes are not text; typing replaces them'
+                : 'Text, e.g. Merhaba (sent as UTF-8)'
+            }
+            value={text ?? ''}
+            onChange={(e) => onChange({ hex: textToHex(e.target.value) })}
+          />
           <textarea
             className={`code ${hex?.bytes ? '' : 'invalid'}`}
             rows={3}

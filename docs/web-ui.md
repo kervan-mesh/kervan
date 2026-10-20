@@ -96,7 +96,7 @@ report events by name, so a new stack, PHY option or board appears without UI ch
 
 ## Showcase
 
-`sim/scenarios/nrf24_payloads.json`: a hub and two sensors, one sending fixed bytes, one a temperature
+`sim/scenarios/nrf24_payloads.json`: a hub and two sensors, one sending fixed bytes (a text), one a temperature
 made by a Python function — open a frame in the Packet tab to see it (needs `--allow-processes`).
 
 `sim/scenarios/city_mesh.json`: 41 sensors on a jittered 450 m grid report to a gateway every

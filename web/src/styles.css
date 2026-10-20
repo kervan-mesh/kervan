@@ -720,3 +720,8 @@ button.expand {
   resize: none;
   font-size: 13px;
 }
+
+input.payload-text {
+  width: 100%;
+  margin-bottom: 4px;
+}

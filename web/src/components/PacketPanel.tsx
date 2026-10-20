@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react';
 
 import { decodeFrame, type FrameField } from '../api';
-import { asciiChar, byteHex, bytesFromHex, dumpRows } from '../model/hex';
+import { asciiChar, byteHex, bytesFromHex, bytesToText, dumpRows } from '../model/hex';
 import { formatTime, LOSS_LABEL, receptionsOf, type Replay, type Tx } from '../model/replay';
 import { findNode, type ScenarioDoc } from '../model/scenario';
 
@@ -129,6 +129,10 @@ export function PacketPanel({ replay, tx, doc, onSeek, onSelectNode }: Props) {
                         {(f.len ?? 0) > 24 ? ' …' : ''}
                       </div>
                     )}
+                    {/^\d+ bytes$/.test(f.value) && f.offset !== undefined && (() => {
+                      const t = bytesToText(bytes.slice(f.offset, f.offset + (f.len ?? 0)));
+                      return t ? <div className="mono">“{t}”</div> : null;
+                    })()}
                   </td>
                 </tr>
               );

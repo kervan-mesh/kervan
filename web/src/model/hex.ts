@@ -63,3 +63,19 @@ export function dumpRows(bytes: number[], width = 8): DumpRow[] {
 export function asciiChar(b: number): string {
   return b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : '·';
 }
+
+// Text as UTF-8 bytes in the payload editor's hex format ("4D 65 72").
+export function textToHex(text: string): string {
+  return [...new TextEncoder().encode(text)].map(byteHex).join(' ');
+}
+
+// The bytes as text if they are valid UTF-8 without control characters (tab and newlines
+// allowed), else null.
+export function bytesToText(bytes: number[]): string | null {
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(new Uint8Array(bytes));
+    return /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(text) ? null : text;
+  } catch {
+    return null;
+  }
+}
