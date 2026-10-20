@@ -19,7 +19,7 @@ and a hybrid bridge so real devices can join a simulated network. See README.md 
 - First PHY profile: **LoRa** (strictest constraints: tiny payloads, long airtime). BLE, 802.15.4,
   ESP-NOW come later.
 
-Only `core/` and `tests/` exist so far.
+Only `core/`, `tests/` and `docs/` exist so far. Wire format: `docs/frame-format.md`.
 
 ## Conventions
 

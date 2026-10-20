@@ -14,4 +14,5 @@ function(kervan_add_test name)
     add_test(NAME ${name} COMMAND ${name})
 endfunction()
 
+kervan_add_test(test_frame)
 kervan_add_test(test_version)
