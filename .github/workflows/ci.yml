@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    name: ${{ matrix.os }} / ${{ matrix.cc }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            cc: gcc
+          - os: ubuntu-latest
+            cc: clang
+          - os: windows-latest
+            cc: msvc
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        shell: bash
+        run: |
+          if [ "${{ matrix.cc }}" != "msvc" ]; then export CC=${{ matrix.cc }}; fi
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DKERVAN_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build build --config Debug
+
+      - name: Test
+        run: ctest --test-dir build -C Debug --output-on-failure
+
+  # The core must also build for a real MCU target (Cortex-M4, like nRF52 / STM32F4).
+  cross-arm:
+    name: arm-none-eabi (Cortex-M4)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi
+      - name: Build core
+        run: |
+          cmake -S . -B build-arm \
+            -DCMAKE_SYSTEM_NAME=Generic \
+            -DCMAKE_C_COMPILER=arm-none-eabi-gcc \
+            -DCMAKE_C_FLAGS="-mcpu=cortex-m4 -mthumb -Os" \
+            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
+            -DKERVAN_BUILD_TESTS=OFF \
+            -DKERVAN_WARNINGS_AS_ERRORS=ON
+          cmake --build build-arm
+          arm-none-eabi-size -t build-arm/core/libkervan_core.a
