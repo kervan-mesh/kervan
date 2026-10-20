@@ -19,12 +19,13 @@ add_executable(ksim_tests
     test_remote.cpp
     test_rng.cpp
     test_scenario.cpp
+    test_serve.cpp
     test_sim.cpp
 )
 find_package(Threads REQUIRED)
 find_package(Python3 COMPONENTS Interpreter QUIET)
 
-target_link_libraries(ksim_tests PRIVATE ksim_core ksim_stack_kervan ksim_stack_nrf24_esb
+target_link_libraries(ksim_tests PRIVATE ksim_core ksim_serve ksim_httplib ksim_stack_kervan ksim_stack_nrf24_esb
     ksim_remote_client nlohmann_json::nlohmann_json GTest::gtest_main Threads::Threads
     kervan_warnings)
 target_compile_definitions(ksim_tests PRIVATE

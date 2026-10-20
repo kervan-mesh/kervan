@@ -46,7 +46,7 @@ Going "live" means writing a port — the protocol code does not change.
 | 2 | Discrete-event simulator: LoRa + nRF24L01+ radios, device profiles, stacks in any language ✅ |
 | 3 | Pub/sub, QoS 1, fragmentation, duty-cycle budget ✅ |
 | 4 | Multi-hop mesh (managed flooding) ✅ |
-| 5 | Web UI: build scenarios visually (boards, protocols, radios, traffic) and watch them run |
+| 5 | Web UI: build scenarios visually (boards, protocols, radios, traffic) and watch them run ✅ |
 | 6 | ESP32 + LoRa port, hardware-in-the-loop bridge |
 | 7 | More PHYs (BLE, 802.15.4, ESP-NOW), encryption, energy model, MQTT gateway (*Kervansaray*) |
 
@@ -92,10 +92,24 @@ nRF24 Enhanced ShockBurst) and boards (`ksim devices`) are separate, versioned b
 New boards are plain JSON files; new stacks plug in through a small C interface, or run as a
 separate process in any language (C and Python clients included) with exactly the same results.
 
+### Try it: the web UI
+
+Build scenarios on a map — boards, protocols, radios, traffic — run them and watch the replay:
+frames on air, receptions, collisions, relays, duty cycle per node. Needs Node.js (20.19+ or 22.12+) once to
+build the UI.
+
+```sh
+cd web && npm ci && npm run build && cd ..
+build/sim/ksim serve        # open http://127.0.0.1:8080
+```
+
+Try `city_mesh`: 42 nodes in a city district, and what managed flooding costs there. See
+[docs/web-ui.md](docs/web-ui.md).
+
 ### Dev container (recommended)
 
 The repository ships a ready-to-use environment in [`.devcontainer/`](.devcontainer/) with GCC, Clang,
-Ninja, CMake and the `arm-none-eabi` cross toolchain — the same compilers CI uses.
+Ninja, CMake, the `arm-none-eabi` cross toolchain and Node.js — the same tools CI uses.
 
 - **VS Code:** install the *Dev Containers* extension, open the folder, choose *Reopen in Container*.
 - **Plain Docker:**

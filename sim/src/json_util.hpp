@@ -37,4 +37,7 @@ std::string get_string(const json &obj, const char *key, const std::string &def,
 // start from that PHY's defaults); keys of another PHY are rejected.
 RadioConfig parse_radio(const json &j, RadioConfig base, const std::string &where);
 
+// The settings of r's PHY in the format parse_radio reads.
+json radio_json(const RadioConfig &r);
+
 } // namespace ksim::json_util

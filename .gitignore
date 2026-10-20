@@ -22,3 +22,7 @@ CLAUDE.local.md
 # Python
 __pycache__/
 *.pyc
+
+# web UI
+web/node_modules/
+web/dist/

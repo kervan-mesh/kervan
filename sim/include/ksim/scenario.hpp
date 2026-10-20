@@ -18,6 +18,10 @@ namespace ksim {
 Scenario parse_scenario(const std::string &json_text, const DeviceRegistry &devices);
 Scenario parse_scenario(const std::string &json_text); // built-in devices
 
+// As above; "${scenario_dir}" in process command lines expands to base_dir.
+Scenario parse_scenario(const std::string &json_text, const DeviceRegistry &devices,
+                        const std::string &base_dir);
+
 Scenario load_scenario_file(const std::string &path, const DeviceRegistry &devices);
 Scenario load_scenario_file(const std::string &path); // built-in devices
 

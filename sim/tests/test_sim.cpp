@@ -179,7 +179,8 @@ void t_on_timer(void *p, uint32_t id)
 }
 
 const ksim_stack_t kTestStack = {KSIM_ABI_VERSION, "test", "1",          t_create,
-                                 t_destroy,        t_on_rx, t_on_tx_done, t_on_timer};
+                                 t_destroy,        t_on_rx, t_on_tx_done, t_on_timer,
+                                 nullptr};
 
 // ---- scenario helpers ----
 // Path loss 40 dB at 1 m, exponent 3, 14 dBm: RSSI(d) = -26 - 30 log10(d).
@@ -418,7 +419,7 @@ TEST_F(Sim, TraceLinesAreJson)
     std::ostringstream trace;
     run(s, &trace);
     EXPECT_EQ(trace.str(),
-              "{\"t\":0,\"ev\":\"meta\",\"ksim\":\"0.1.0\",\"abi\":2,\"phy\":{\"lora\":\"1\"},"
+              "{\"t\":0,\"ev\":\"meta\",\"ksim\":\"0.1.0\",\"abi\":3,\"phy\":{\"lora\":\"1\"},"
               "\"stack\":{\"test\":\"1\"},\"device\":{}}\n"
               "{\"t\":1000,\"ev\":\"tx\",\"node\":1,\"len\":10,\"airtime\":41216}\n"
               "{\"t\":42216,\"ev\":\"rx\",\"node\":2,\"from\":1,\"rssi\":-86.0,\"snr\":31.03}\n");

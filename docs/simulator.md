@@ -1,7 +1,7 @@
 # ksim — the Kervan simulator
 
-Status: **phase 2 complete** — engine, LoRa and nRF24 PHYs, device profiles, Kervan and nRF24 ESB
-stacks, out-of-process stacks (any language), CLI.
+Status: engine, LoRa and nRF24 PHYs, device profiles, Kervan and nRF24 ESB stacks, out-of-process
+stacks (any language), CLI, and a web UI (`ksim serve`, [web-ui.md](web-ui.md)).
 
 ksim is a general-purpose discrete-event simulator for low-power wireless networks. Kervan is one
 protocol it can run; other stacks plug into the same interface. The simulator itself never depends
@@ -19,7 +19,7 @@ carry a version that is recorded in every trace.
 ├───────────────────────┴──────────────────────────────┤
 │  Device profiles: board = MCU + radio + limits (JSON) │
 ├──────────────────────────────────────────────────────┤
-│  Stack adapter interface (C ABI v2, ksim/stack.h)     │
+│  Stack adapter interface (C ABI v3, ksim/stack.h)     │
 ├─────────────┬──────────────────┬─────────────────────┤
 │  kervan v2  │  nrf24-esb v1    │ …                   │
 └─────────────┴──────────────────┴─────────────────────┘
@@ -30,6 +30,7 @@ carry a version that is recorded in every trace.
 ```sh
 ksim run sim/scenarios/line_5.json [--seed N] [--duration S] [--trace out.jsonl] [--devices DIR]
                                     [--port P]
+ksim serve [--port P]        # web UI: edit, run and replay scenarios (web-ui.md)
 ksim stacks                  # protocol stacks and their versions
 ksim devices [--devices DIR] # device profiles
 ksim version
@@ -111,11 +112,11 @@ Adding a board needs no code.
 nRF24L01+). Limits are enforced when the scenario is loaded and when a stack changes the radio at
 run time. Bump `version` whenever a change could alter results.
 
-## Stack adapter interface (C ABI v2)
+## Stack adapter interface (C ABI v3)
 
 Declared in [`sim/include/ksim/stack.h`](../sim/include/ksim/stack.h). A stack provides
 `ksim_stack_t` (name, version, create/destroy an instance per node, `on_rx`, `on_tx_done`,
-`on_timer`). The simulator provides `ksim_host_t` (time, `radio_send`, timers, random numbers,
+`on_timer`, an optional config schema). The simulator provides `ksim_host_t` (time, `radio_send`, timers, random numbers,
 `trace`, `radio_get`/`radio_set`).
 
 - C, not C++: a stack compiled by another compiler, or living in a DLL, still fits.
@@ -125,9 +126,33 @@ Declared in [`sim/include/ksim/stack.h`](../sim/include/ksim/stack.h). A stack p
   TX power, LoRa frequency/SF/bandwidth, nRF24 channel/data rate. Values are checked against the
   PHY and the device profile; changes are refused while transmitting.
 - `trace` lets stacks report application events, which tests and the summary count.
-- `abi_version` guards incompatible changes: v1 initial, v2 added radio control and stack versions.
+- `abi_version` guards incompatible changes: v1 initial, v2 added radio control and stack versions,
+  v3 the config schema. Out-of-process stacks may still report ABI 2 (the wire protocol did not
+  change).
 - Stacks are never called back synchronously from a host function: `on_tx_done` and `on_timer`
   always arrive as separate events.
+
+### Config schema
+
+A stack may describe the options `create()` accepts in `ksim_stack_t::config_schema` (JSON, or
+NULL). The web UI ([web-ui.md](web-ui.md)) turns it into a form, so a new stack is editable there
+without UI code:
+
+```json
+{"phy": ["lora"],
+ "options": [
+   {"key": "relay", "type": "bool", "default": true, "group": "mesh", "help": "Relay frames for other nodes"},
+   {"key": "qos", "type": "enum", "values": [0, 1], "default": 0, "group": "traffic", "help": "..."},
+   {"key": "len", "type": "int", "min": 0, "max": 254, "default": 10, "group": "traffic", "help": "..."}
+ ]}
+```
+
+- `phy`: radios the stack runs on (the UI offers it only for those).
+- `type`: `int` (with optional `min`, `max`, `step`), `number`, `bool`, `string`, `enum` (`values`).
+- `default`: what applies when the key is left out; omit it when the default depends on the node
+  (e.g. an address derived from the node id). A test (`ServeApi.SchemaDefaultsAreTheStackDefaults`)
+  runs every built-in stack with all schema defaults spelled out and requires an identical trace.
+- `group` and `help` are for display.
 
 ## Out-of-process stacks
 
@@ -221,7 +246,7 @@ JSON Lines, one event per line. The first line records the versions of everythin
 the run:
 
 ```json
-{"t":0,"ev":"meta","ksim":"0.1.0","abi":2,"phy":{"lora":"1"},"stack":{"kervan":"2"},"device":{"esp32-sx1276":"1"}}
+{"t":0,"ev":"meta","ksim":"0.1.0","abi":3,"phy":{"lora":"1"},"stack":{"kervan":"2"},"device":{"esp32-sx1276":"1"}}
 {"t":1520384,"ev":"tx","node":1,"len":18,"airtime":185344}
 {"t":1705728,"ev":"rx","node":2,"from":1,"rssi":-101.23,"snr":15.8}
 {"t":1705728,"ev":"lost","node":3,"from":1,"reason":"collision"}
@@ -236,6 +261,7 @@ Loss reasons: `collision`, `half_duplex`, `rx_off`.
 |---|---|---|
 | A board | `sim/devices/<name>.json` or a `--devices` directory | no |
 | A protocol stack (built in) | `sim/stacks/<name>/`, implement `ksim_stack_t`, register in `sim/src/main.cpp` | C (or anything with a C ABI) |
+| Its form in the web UI | `config_schema` in `ksim_stack_t` (see [Config schema](#config-schema)) | JSON in a C string |
 | A protocol stack (separate process) | anywhere; C: `ksim_remote_serve_env(stack)`, Python: subclass `ksim_remote.Stack` | any language that speaks [the protocol](remote-protocol.md) |
 | A radio technology | subclass `Phy` in `sim/src/phy.cpp`, add its settings to `RadioConfig` and the scenario parser | C++ |
 

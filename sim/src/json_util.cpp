@@ -148,4 +148,25 @@ RadioConfig parse_radio(const json &j, RadioConfig base, const std::string &wher
     return r;
 }
 
+json radio_json(const RadioConfig &r)
+{
+    json j;
+    j["type"] = phy_for(r.type).name();
+    j["tx_power_dbm"] = r.tx_power_dbm;
+    if (r.type == PhyType::LoRa) {
+        j["freq_hz"] = r.lora.freq_hz;
+        j["bw_hz"] = r.lora.bw_hz;
+        j["sf"] = r.lora.sf;
+        j["cr"] = r.lora.cr;
+        j["preamble"] = r.lora.preamble;
+        j["crc"] = r.lora.crc;
+        j["implicit_header"] = r.lora.implicit_header;
+    } else {
+        j["channel"] = r.nrf24.channel;
+        j["data_rate"] = r.nrf24.data_rate;
+        j["crc_bytes"] = r.nrf24.crc_bytes;
+    }
+    return j;
+}
+
 } // namespace ksim::json_util

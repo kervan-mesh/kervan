@@ -349,9 +349,48 @@ static void ks_on_timer(void *inst, uint32_t timer_id)
     sync(s);
 }
 
+/* Options accepted by ks_create, for tools such as the web UI (docs/simulator.md). Keep the
+ * defaults in sync with kv_node_config_default and ks_create; a test checks them. */
+static const char config_schema[] =
+    "{\"phy\":[\"lora\"],\"options\":["
+    "{\"key\":\"addr\",\"type\":\"int\",\"min\":0,\"max\":65534,\"group\":\"node\","
+    "\"help\":\"Kervan address (default: the node id)\"},"
+    "{\"key\":\"net\",\"type\":\"int\",\"min\":0,\"max\":255,\"default\":1,\"group\":\"node\","
+    "\"help\":\"Network id; nodes ignore other networks\"},"
+    "{\"key\":\"hop_limit\",\"type\":\"int\",\"min\":0,\"max\":7,\"default\":3,\"group\":\"node\","
+    "\"help\":\"Relays a message of this node may pass\"},"
+    "{\"key\":\"relay\",\"type\":\"bool\",\"default\":true,\"group\":\"mesh\","
+    "\"help\":\"Relay frames for other nodes (managed flooding)\"},"
+    "{\"key\":\"relay_window_ms\",\"type\":\"int\",\"min\":0,\"max\":2147483647,\"default\":1000,"
+    "\"group\":\"mesh\",\"help\":\"Relays wait 0..window (weaker signal first) plus jitter\"},"
+    "{\"key\":\"duty_permille\",\"type\":\"int\",\"min\":0,\"max\":1000,\"default\":10,"
+    "\"group\":\"budget\",\"help\":\"Airtime budget in 1/1000: 10 = 1 % (EU868); 0 = unlimited\"},"
+    "{\"key\":\"duty_burst_ms\",\"type\":\"int\",\"min\":0,\"max\":2147483647,\"default\":0,"
+    "\"group\":\"budget\",\"help\":\"Airtime credit that may build up while idle\"},"
+    "{\"key\":\"ack_timeout_ms\",\"type\":\"int\",\"min\":0,\"max\":2147483647,\"default\":5000,"
+    "\"group\":\"qos\",\"help\":\"First wait for an ACK; doubles with every retry\"},"
+    "{\"key\":\"retries\",\"type\":\"int\",\"min\":0,\"max\":255,\"default\":3,\"group\":\"qos\","
+    "\"help\":\"Retransmissions after the first attempt (QoS 1)\"},"
+    "{\"key\":\"send_to\",\"type\":\"int\",\"min\":0,\"max\":65535,\"default\":65535,"
+    "\"group\":\"traffic\",\"help\":\"Destination address; 65535 = broadcast\"},"
+    "{\"key\":\"send_every_ms\",\"type\":\"int\",\"min\":0,\"max\":2147483647,\"default\":0,"
+    "\"group\":\"traffic\",\"help\":\"Publish period; 0 = no traffic\"},"
+    "{\"key\":\"jitter_ms\",\"type\":\"int\",\"min\":0,\"max\":2147483647,\"default\":0,"
+    "\"group\":\"traffic\",\"help\":\"Each period varies by up to +-jitter\"},"
+    "{\"key\":\"len\",\"type\":\"int\",\"min\":0,\"max\":254,\"default\":10,\"group\":\"traffic\","
+    "\"help\":\"Payload bytes; larger than one frame is fragmented\"},"
+    "{\"key\":\"qos\",\"type\":\"enum\",\"values\":[0,1],\"default\":0,\"group\":\"traffic\","
+    "\"help\":\"0 = at most once, 1 = acknowledged (unicast only)\"},"
+    "{\"key\":\"topic\",\"type\":\"string\",\"default\":\"kervan/data\",\"group\":\"traffic\","
+    "\"help\":\"Topic name of published messages\"},"
+    "{\"key\":\"subscribe\",\"type\":\"string\",\"default\":\"kervan/data\",\"group\":\"traffic\","
+    "\"help\":\"Broadcast topic this node receives\"}"
+    "]}";
+
 const ksim_stack_t *ksim_stack_kervan(void)
 {
     static const ksim_stack_t stack = {KSIM_ABI_VERSION, "kervan",      "2",        ks_create,
-                                       ks_destroy,       ks_on_rx,      ks_on_tx_done, ks_on_timer};
+                                       ks_destroy,       ks_on_rx,      ks_on_tx_done, ks_on_timer,
+                                       config_schema};
     return &stack;
 }

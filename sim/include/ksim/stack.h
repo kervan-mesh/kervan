@@ -20,9 +20,11 @@ extern "C" {
  * Version history:
  *   1  initial
  *   2  radio_get/radio_set, ksim_stack_t::version
+ *   3  ksim_stack_t::config_schema
  */
 
-#define KSIM_ABI_VERSION 2u
+#define KSIM_ABI_VERSION 3u
+#define KSIM_ABI_VERSION_MIN_REMOTE 2u /* oldest ABI an out-of-process stack may report */
 
 /* Results */
 #define KSIM_OK 0
@@ -84,6 +86,12 @@ typedef struct {
     void (*on_rx)(void *inst, const uint8_t *buf, size_t len, const ksim_rx_meta_t *meta);
     void (*on_tx_done)(void *inst);
     void (*on_timer)(void *inst, uint32_t timer_id);
+
+    /*
+     * Optional (may be NULL): the options create() accepts, as JSON, so tools such as the web UI
+     * can offer a form. Format in docs/simulator.md ("Config schema").
+     */
+    const char *config_schema;
 } ksim_stack_t;
 
 #ifdef __cplusplus

@@ -273,6 +273,6 @@ TEST(Esb, GoldenStarScenario)
     const Outcome b = run(s);
     EXPECT_EQ(a.sum.trace_hash, b.sum.trace_hash);
     EXPECT_GT(a.count("esb_tx_ds"), 0u);
-    EXPECT_EQ(a.sum.trace_hash, 0x20254f2ebc5151cfull) << std::hex << "actual: 0x"
+    EXPECT_EQ(a.sum.trace_hash, 0xbd578facf1580370ull) << std::hex << "actual: 0x"
                                                        << a.sum.trace_hash;
 }

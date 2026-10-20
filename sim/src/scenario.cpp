@@ -270,6 +270,12 @@ Scenario parse_scenario(const std::string &json_text)
     return parse_scenario(json_text, DeviceRegistry::builtin());
 }
 
+Scenario parse_scenario(const std::string &json_text, const DeviceRegistry &devices,
+                        const std::string &base_dir)
+{
+    return parse(json_text, devices, base_dir.empty() ? "." : base_dir);
+}
+
 Scenario load_scenario_file(const std::string &path, const DeviceRegistry &devices)
 {
     std::ifstream in(path, std::ios::binary);

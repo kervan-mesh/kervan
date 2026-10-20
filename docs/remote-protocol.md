@@ -50,7 +50,7 @@ Integers are little-endian; `f64` is an IEEE 754 double in little-endian byte or
 
 | Type | Name | Direction | Fields |
 |---|---|---|---|
-| 0x01 | HELLO | stack → ksim | `u16 protocol` (1), `u16 abi` (2), `u32 node_id`, `u8 mode` (0 = lockstep), `str stack_name`, `str stack_version` |
+| 0x01 | HELLO | stack → ksim | `u16 protocol` (1), `u16 abi` (2 or 3), `u32 node_id`, `u8 mode` (0 = lockstep), `str stack_name`, `str stack_version` |
 | 0x02 | ERROR | ksim → stack | `str message`; ksim closes the connection afterwards |
 | 0x10 | EV_CREATE | ksim → stack | `u64 now`, `u32 node_id`, `u32 mtu`, `str config` |
 | 0x11 | EV_RX | ksim → stack | `u64 now`, `f64 rssi_dbm`, `f64 snr_db`, `bytes frame` |

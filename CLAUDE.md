@@ -15,7 +15,8 @@ and a hybrid bridge so real devices can join a simulated network. See README.md 
 - Simulator — **C++20**, discrete-event engine with virtual time, deterministic (seeded),
   radio channel model (path loss, SNR, collisions, airtime per PHY profile). Nodes loaded in-process.
 - Kervansaray — gateway (target: Raspberry Pi Zero 2 W) bridging Kervan ↔ MQTT. C++.
-- Web visualizer — TypeScript, fed by the simulator over WebSocket.
+- Web UI — TypeScript + React, talks to `ksim serve` over HTTP (run, then replay the trace).
+  WebSocket streaming only when live hardware (phase 6) needs it.
 - First PHY profile: **LoRa** (strictest constraints: tiny payloads, long airtime). BLE, 802.15.4,
   ESP-NOW come later.
 
@@ -23,7 +24,9 @@ Exists so far: `core/` (frame, node, PAL), `port/udp/` (PC port, peer lists defi
 `examples/udp_demo/`, `tests/`, `fuzz/`, `sim/` (ksim simulator), `docs/`.
 Wire format: `docs/frame-format.md`. Messaging (pub/sub, QoS, fragments, duty cycle, mesh):
 `docs/messaging.md`. Simulator: `docs/simulator.md`. Out-of-process stacks:
-`docs/remote-protocol.md` (`sim/remote/`: C client, Python client, `ksim-node`).
+`docs/remote-protocol.md` (`sim/remote/`: C client, Python client, `ksim-node`). Web UI: `web/`
+(TypeScript + React + Vite) served by `ksim serve` (`sim/src/serve/`, cpp-httplib), see
+`docs/web-ui.md`.
 
 Simulator rules: ksim is **general-purpose** — `ksim_core` must never depend on Kervan core; protocols
 plug in through the C ABI in `sim/include/ksim/stack.h` (`sim/stacks/<name>/`). Results must be
@@ -34,6 +37,12 @@ errors. Everything is versioned (PHY `version()`, `ksim_stack_t::version`, devic
 trace `meta` line): bump the version whenever results can change. Boards are data
 (`sim/devices/*.json`); see "Extending ksim" in `docs/simulator.md`. ESB model spec:
 `docs/nrf24-esb.md` (clean-room, datasheet values checked).
+Stack ABI is v3: `ksim_stack_t::config_schema` (JSON) describes a stack's options for the UI; its
+defaults must match the stack's real defaults (`ServeApi.SchemaDefaultsAreTheStackDefaults`).
+`ksim serve` lives in its own library (`ksim_serve`), so `ksim_core` needs no network code; the
+API (`ksim::serve::Api`) is tested without sockets. The web UI knows no protocol: stacks describe
+their options (schema) and report events by name. Keep UI logic in `web/src/model/` (pure, vitest)
+and drawing in `web/src/components/`.
 Ports drive the node from their main loop (`kv_node_on_rx/on_tx_done/tick`, `next_deadline`) and
 never call core from inside a PAL callback or an interrupt.
 
@@ -75,6 +84,16 @@ volume (`-v kervan-build:/build`, owned by uid 1000) to keep builds between `doc
 
 Simulator: `build/sim/ksim run sim/scenarios/line_5.json [--seed N] [--trace out.jsonl]`.
 
+Web UI (Node.js 20.19+/22.12+; in the container too):
+```sh
+cd web && npm ci && npm test && npm run build   # typecheck + vitest + bundle into web/dist
+build/sim/ksim serve                            # http://127.0.0.1:8080; `npm run dev` for hot reload
+```
+Run `npm` for the container on a copy of `web/` (or a separate checkout): `npm ci` there would
+replace the host's `node_modules` with Linux binaries. Check UI changes visually with a headless
+browser screenshot, e.g. `msedge --headless=new --screenshot=out.png --window-size=1500,950
+--virtual-time-budget=10000 "http://127.0.0.1:8080/?scenario=line_5&run=1&t=548&play=0"`.
+
 ARM Cortex-M4 cross build of core (also run by CI — check code size here):
 ```sh
 cmake -S . -B build-arm -DCMAKE_SYSTEM_NAME=Generic -DCMAKE_C_COMPILER=arm-none-eabi-gcc \
@@ -92,8 +111,8 @@ CC=clang cmake -S . -B /tmp/b-fz -DKERVAN_BUILD_FUZZERS=ON -DKERVAN_BUILD_TESTS=
 ```
 
 CI (`.github/workflows/ci.yml`): GCC, Clang (Linux), MSVC (Windows), Apple Clang (macOS),
-arm-none-eabi, ASan/UBSan, coverage (≥90% lines, core + port + sim), 60 s fuzzing per target — on
-every push/PR.
+arm-none-eabi, ASan/UBSan, coverage (≥90% lines, core + port + sim), 60 s fuzzing per target, web UI
+(typecheck, vitest, build) — on every push/PR.
 
 ## Roadmap status
 
@@ -107,10 +126,11 @@ every push/PR.
 - [x] Phase 3 — pub/sub (hashed 16-bit topics), QoS 0/1 with backoff, fragmentation, duty-cycle budget
   (docs/messaging.md)
 - [x] Phase 4 — multi-hop mesh: managed flooding (SNR-weighted delay, suppression); route learning later
-- [ ] Phase 5 — **web UI** ← next: scenario editor (pick device/board, protocol, radio, traffic; drag nodes on a
-  map) + live visualizer (packet animation, charts), served locally by `ksim serve`. Writes the same
-  scenario JSON, reads the same trace. Needs device profiles (board = MCU + radio, limits, current).
-- [ ] Phase 6 — ESP32 + LoRa port, hardware-in-the-loop bridge
+- [x] Phase 5 — web UI (first version): `ksim serve` + scenario editor (map, devices, stacks with
+  schema-generated forms, radio, traffic) + run-then-replay viewer (packet animation, losses by
+  reason, duty cycle, stack events), `city_mesh` showcase (docs/web-ui.md). Later: real map tiles
+  (OSM), comparing two runs, live streaming for HIL.
+- [ ] Phase 6 — ESP32 + LoRa port, hardware-in-the-loop bridge ← next
 - [ ] Phase 7 — more PHYs, encryption (AES-CCM), energy model, MQTT gateway
 
 Update this checklist when a phase completes. Record significant design decisions in `docs/`.

@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
+#include <iterator>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -19,6 +20,8 @@
 #include "ksim/simulator.hpp"
 #include "ksim/stacks/kervan.h"
 #include "ksim/stacks/nrf24_esb.h"
+#include "api.hpp"
+#include "http.hpp"
 
 namespace {
 
@@ -33,6 +36,9 @@ int usage()
                  "  ksim run <scenario.json> [--seed N] [--duration SECONDS] [--trace FILE]\n"
                  "                           [--devices DIR] [--port P]\n"
                  "      --port P   TCP port for out-of-process nodes (default: any free port)\n"
+                 "  ksim serve [--port P] [--web DIR] [--scenarios DIR] [--devices DIR]\n"
+                 "             [--allow-processes]\n"
+                 "      web UI on http://127.0.0.1:P (default 8080), see docs/web-ui.md\n"
                  "  ksim stacks                     list protocol stacks\n"
                  "  ksim devices [--devices DIR]    list device profiles\n"
                  "  ksim version\n");
@@ -152,6 +158,48 @@ int run(std::vector<std::string> args)
     return 0;
 }
 
+int serve(std::vector<std::string> args)
+{
+    ksim::serve::Options opt;
+    opt.devices = load_devices(args);
+    opt.stacks.assign(std::begin(builtin_stacks), std::end(builtin_stacks));
+    opt.program_dir = program_dir;
+    opt.scenario_dir = KSIM_DEFAULT_SCENARIO_DIR;
+    std::string web_dir = KSIM_DEFAULT_WEB_DIR;
+    uint16_t port = 8080;
+    for (size_t i = 0; i < args.size(); i++) {
+        const std::string &key = args[i];
+        if (key == "--allow-processes") {
+            opt.allow_processes = true;
+            continue;
+        }
+        if (i + 1 >= args.size()) {
+            return usage();
+        }
+        const std::string &val = args[++i];
+        if (key == "--port") {
+            port = static_cast<uint16_t>(std::strtoul(val.c_str(), nullptr, 10));
+        } else if (key == "--web") {
+            web_dir = val;
+        } else if (key == "--scenarios") {
+            opt.scenario_dir = val;
+        } else {
+            return usage();
+        }
+    }
+
+    const std::string scenario_dir = opt.scenario_dir;
+    const ksim::serve::Api api(std::move(opt));
+    ksim::serve::HttpServer http(api, web_dir);
+    const uint16_t bound = http.bind(port);
+    std::printf("ksim serve: open http://127.0.0.1:%u  (Ctrl+C stops)\n"
+                "  scenarios  %s\n  web ui     %s\n",
+                unsigned{bound}, scenario_dir.c_str(), web_dir.c_str());
+    std::fflush(stdout);
+    http.listen();
+    return 0;
+}
+
 int list_devices(std::vector<std::string> args)
 {
     const ksim::DeviceRegistry devices = load_devices(args);
@@ -179,6 +227,9 @@ int main(int argc, char **argv)
         args.erase(args.begin());
         if (cmd == "run") {
             return run(args);
+        }
+        if (cmd == "serve") {
+            return serve(args);
         }
         if (cmd == "devices") {
             return list_devices(args);

@@ -441,9 +441,40 @@ static void es_on_timer(void *inst, uint32_t timer_id)
     }
 }
 
+/* Options accepted by es_create, for tools such as the web UI (docs/simulator.md). Keep the
+ * defaults in sync with es_create; a test checks them. */
+static const char config_schema[] =
+    "{\"phy\":[\"nrf24\"],\"options\":["
+    "{\"key\":\"addr\",\"type\":\"int\",\"min\":0,\"max\":1099511627775,\"group\":\"radio\","
+    "\"help\":\"Own address, up to 5 bytes (default: 0xE7E7E7E7 + node id)\"},"
+    "{\"key\":\"aw\",\"type\":\"int\",\"min\":3,\"max\":5,\"default\":5,\"group\":\"radio\","
+    "\"help\":\"Address width in bytes\"},"
+    "{\"key\":\"pipes\",\"type\":\"int\",\"min\":1,\"max\":5,\"default\":1,\"group\":\"radio\","
+    "\"help\":\"Receive pipes: addr, addr+1, ...\"},"
+    "{\"key\":\"listen\",\"type\":\"bool\",\"default\":true,\"group\":\"radio\","
+    "\"help\":\"Receiver on when not transmitting (PRX)\"},"
+    "{\"key\":\"no_ack\",\"type\":\"bool\",\"default\":false,\"group\":\"esb\","
+    "\"help\":\"Send without asking for an ACK\"},"
+    "{\"key\":\"ard_us\",\"type\":\"int\",\"min\":250,\"max\":4000,\"step\":250,\"default\":500,"
+    "\"group\":\"esb\",\"help\":\"Auto retransmit delay\"},"
+    "{\"key\":\"arc\",\"type\":\"int\",\"min\":0,\"max\":15,\"default\":3,\"group\":\"esb\","
+    "\"help\":\"Auto retransmit count\"},"
+    "{\"key\":\"ack_payload_len\",\"type\":\"int\",\"min\":0,\"max\":32,\"default\":0,"
+    "\"group\":\"esb\",\"help\":\"Payload carried back in every ACK\"},"
+    "{\"key\":\"send_to\",\"type\":\"int\",\"min\":0,\"max\":1099511627775,\"group\":\"traffic\","
+    "\"help\":\"Destination address (needed when sending)\"},"
+    "{\"key\":\"send_every_ms\",\"type\":\"int\",\"min\":0,\"max\":4294967295,\"default\":0,"
+    "\"group\":\"traffic\",\"help\":\"Send period; 0 = no traffic\"},"
+    "{\"key\":\"jitter_ms\",\"type\":\"int\",\"min\":0,\"max\":2147483647,\"default\":0,"
+    "\"group\":\"traffic\",\"help\":\"Each period varies by up to +-jitter\"},"
+    "{\"key\":\"len\",\"type\":\"int\",\"min\":0,\"max\":32,\"default\":8,\"group\":\"traffic\","
+    "\"help\":\"Payload bytes (byte 0 carries the node id)\"}"
+    "]}";
+
 const ksim_stack_t *ksim_stack_nrf24_esb(void)
 {
     static const ksim_stack_t stack = {KSIM_ABI_VERSION, "nrf24-esb",   "1",          es_create,
-                                       es_destroy,       es_on_rx,      es_on_tx_done, es_on_timer};
+                                       es_destroy,       es_on_rx,      es_on_tx_done, es_on_timer,
+                                       config_schema};
     return &stack;
 }

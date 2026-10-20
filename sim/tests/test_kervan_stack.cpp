@@ -156,5 +156,5 @@ TEST(KervanStack, GoldenLineScenario)
     const Summary b = run(s);
     EXPECT_EQ(a.trace_hash, b.trace_hash);
     EXPECT_GT(count(a, "app_ack"), 0u);
-    EXPECT_EQ(a.trace_hash, 0x1078231ca431da15ull) << std::hex << "actual: 0x" << a.trace_hash;
+    EXPECT_EQ(a.trace_hash, 0xee66cd6812c85c76ull) << std::hex << "actual: 0x" << a.trace_hash;
 }

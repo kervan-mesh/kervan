@@ -16,6 +16,20 @@ FetchContent_Declare(nlohmann_json
 FetchContent_MakeAvailable(nlohmann_json)
 kervan_as_system(nlohmann_json)
 
+# HTTP server for `ksim serve` (header only). SOURCE_SUBDIR points nowhere so its CMake project,
+# which would look for OpenSSL, zlib and brotli, is not used.
+FetchContent_Declare(httplib
+    URL https://github.com/yhirose/cpp-httplib/archive/refs/tags/v0.18.1.tar.gz
+    URL_HASH SHA256=405abd8170f2a446fc8612ac635d0db5947c0d2e156e32603403a4496255ff00
+    SOURCE_SUBDIR none
+)
+FetchContent_MakeAvailable(httplib)
+add_library(ksim_httplib INTERFACE)
+target_include_directories(ksim_httplib SYSTEM INTERFACE ${httplib_SOURCE_DIR})
+if(WIN32)
+    target_link_libraries(ksim_httplib INTERFACE ws2_32)
+endif()
+
 # Device profiles (sim/devices/*.json) are compiled into the binary; ksim also loads more at
 # runtime with --devices DIR.
 file(GLOB KSIM_DEVICE_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/devices/*.json)
@@ -76,8 +90,21 @@ add_executable(ksim-node remote/ksim_node.c)
 target_link_libraries(ksim-node PRIVATE ksim_remote_client ksim_stack_kervan ksim_stack_nrf24_esb
     kervan_warnings)
 
+# `ksim serve`: HTTP API for the web UI (web/). Not part of ksim_core: the simulator needs no network.
+add_library(ksim_serve src/serve/api.cpp src/serve/http.cpp)
+target_include_directories(ksim_serve PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/serve)
+target_link_libraries(ksim_serve PUBLIC ksim_core PRIVATE ksim_httplib nlohmann_json::nlohmann_json
+    kervan_warnings)
+find_package(Threads REQUIRED)
+target_link_libraries(ksim_serve PRIVATE Threads::Threads)
+
 add_executable(ksim src/main.cpp)
-target_link_libraries(ksim PRIVATE ksim_core ksim_stack_kervan ksim_stack_nrf24_esb kervan_warnings)
+target_link_libraries(ksim PRIVATE ksim_core ksim_serve ksim_stack_kervan ksim_stack_nrf24_esb
+    kervan_warnings)
+# Defaults for `ksim serve` when run from a build tree; --web and --scenarios override them.
+target_compile_definitions(ksim PRIVATE
+    KSIM_DEFAULT_WEB_DIR="${PROJECT_SOURCE_DIR}/web/dist"
+    KSIM_DEFAULT_SCENARIO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/scenarios")
 
 if(KERVAN_BUILD_TESTS)
     add_subdirectory(tests)

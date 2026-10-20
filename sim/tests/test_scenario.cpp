@@ -5,6 +5,7 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
 #include <stdexcept>
 #include <string>
 
@@ -94,11 +95,17 @@ TEST(Scenario, ErrorsPointAtTheProblem)
 
 TEST(Scenario, ShippedScenariosParse)
 {
-    for (const char *name : {"two_nodes.json", "line_5.json", "star_collisions.json", "nrf24_star.json",
-                             "remote_mixed.json"}) {
-        SCOPED_TRACE(name);
-        EXPECT_NO_THROW(ksim::load_scenario_file(std::string(KSIM_SCENARIO_DIR) + "/" + name));
+    // every file in sim/scenarios, so new scenarios are checked without touching this test
+    size_t count = 0;
+    for (const auto &entry : std::filesystem::directory_iterator(KSIM_SCENARIO_DIR)) {
+        if (entry.path().extension() != ".json") {
+            continue;
+        }
+        SCOPED_TRACE(entry.path().string());
+        EXPECT_NO_THROW(ksim::load_scenario_file(entry.path().string()));
+        count++;
     }
+    EXPECT_GE(count, 6u);
     EXPECT_THROW(ksim::load_scenario_file("does/not/exist.json"), std::runtime_error);
 }
 

@@ -91,7 +91,8 @@ void r_on_timer(void *inst, uint32_t timer_id)
 }
 
 const ksim_stack_t kRemoteVtable = {KSIM_ABI_VERSION, "remote",     "1",       r_create,
-                                    r_destroy,        r_on_rx,      r_on_tx_done, r_on_timer};
+                                    r_destroy,        r_on_rx,      r_on_tx_done, r_on_timer,
+                                    nullptr};
 
 } // namespace
 
@@ -329,7 +330,7 @@ RemoteHub::connect(const std::vector<const NodeSpec *> &nodes, const WaitCallbac
         if (protocol != KSIM_REMOTE_PROTOCOL_VERSION) {
             problem = "speaks remote protocol " + std::to_string(protocol) + ", ksim speaks " +
                       std::to_string(KSIM_REMOTE_PROTOCOL_VERSION);
-        } else if (abi != KSIM_ABI_VERSION) {
+        } else if (abi < KSIM_ABI_VERSION_MIN_REMOTE || abi > KSIM_ABI_VERSION) {
             problem = "was built for stack ABI " + std::to_string(abi) + ", ksim uses " +
                       std::to_string(KSIM_ABI_VERSION);
         } else if (mode != KSIM_REMOTE_MODE_LOCKSTEP) {
