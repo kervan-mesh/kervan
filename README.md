@@ -47,7 +47,8 @@ Going "live" means writing a port — the protocol code does not change.
 | 3 | Pub/sub, QoS 1, fragmentation, duty-cycle budget ✅ |
 | 4 | Multi-hop mesh (managed flooding) ✅ |
 | 5 | Web UI: build scenarios visually (boards, protocols, radios, traffic) and watch them run ✅ |
-| 6 | ESP32 + LoRa port, hardware-in-the-loop bridge |
+| 5b | Payloads (length, fixed bytes or a Python function per node) and a packet inspector in the UI |
+| 6 | ESP32 + LoRa port, hardware-in-the-loop bridge, channel model calibrated with real measurements |
 | 7 | More PHYs (BLE, 802.15.4, ESP-NOW), encryption, energy model, MQTT gateway (*Kervansaray*) |
 
 ## Building
