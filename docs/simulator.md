@@ -17,7 +17,7 @@ carry a version that is recorded in every trace.
 ├───────────────────────┬──────────────────────────────┤
 │  PHY: lora (v1)       │  PHY: nrf24 (v1)      │ …    │
 ├───────────────────────┴──────────────────────────────┤
-│  Device profiles: board = MCU + radio + limits (JSON) │
+│  Hardware: MCUs, radio modules, boards (JSON)         │
 ├──────────────────────────────────────────────────────┤
 │  Stack adapter interface (C ABI v4, ksim/stack.h)     │
 ├─────────────┬──────────────────┬─────────────────────┤
@@ -28,11 +28,12 @@ carry a version that is recorded in every trace.
 ## Running
 
 ```sh
-ksim run sim/scenarios/line_5.json [--seed N] [--duration S] [--trace out.jsonl] [--devices DIR]
+ksim run sim/scenarios/line_5.json [--seed N] [--duration S] [--trace out.jsonl] [--hardware DIR]
                                     [--port P]
 ksim serve [--port P]        # web UI: edit, run and replay scenarios (web-ui.md)
 ksim stacks                  # protocol stacks and their versions
-ksim devices [--devices DIR] # device profiles
+ksim devices [--hardware DIR] # boards, radio modules, MCUs
+ksim wiring rpi-pico nrf24l01p # how to connect them
 ksim version
 ```
 
@@ -87,30 +88,51 @@ inter-SF interference; duty cycle is not measured over sliding one-hour windows.
 nRF24L01+ at 2.4 GHz: see [nrf24-esb.md](nrf24-esb.md) (channels, data rates, sensitivity, C/I,
 occupied bandwidth, frame layout).
 
-## Device profiles
+## Hardware catalog
 
-A device profile describes a board — MCU plus radio — with the radio's defaults and hardware
-limits. Profiles are JSON files: the ones in [`sim/devices/`](../sim/devices/) are compiled into
-ksim, and `--devices DIR` loads more (a profile with the same name replaces the built-in one).
-Adding a board needs no code.
+Hardware is data: JSON files in [`sim/hardware/`](../sim/hardware/), compiled into ksim;
+`--hardware DIR` loads more from `DIR/mcus`, `DIR/modules` and `DIR/boards` (a part with the same
+name replaces the built-in one, also inside boards that use it). Adding hardware needs no code.
+
+A node runs on one of:
+
+| In the scenario | Means |
+|---|---|
+| `"device": "esp32-sx1276"` | a **board**: a named MCU + module (`ksim devices`) |
+| `"mcu": "rpi-pico", "module": "nrf24l01p-pa-lna"` | a **radio module** wired to an **MCU** you pick |
+| `"module": "sx1262"` | a module alone (the MCU does not change the radio) |
+| none of these | the scenario's `radio`, without hardware limits |
+
+**Radio modules** (`modules/*.json`) decide the physics: radio defaults, power limits, antenna gain
+and an optional LNA. **MCUs** (`mcus/*.json`) do not change results today; they give RAM/flash,
+logic voltage, the 3.3 V supply and pins for the wiring guide (and later the energy model and the
+firmware port). **Boards** (`boards/*.json`) name a pair; `"integrated": true` means the radio is
+on the board.
 
 ```json
-{
-  "name": "esp32-sx1276",
-  "version": 1,
-  "description": "ESP32 with a Semtech SX1276 LoRa transceiver on PA_BOOST",
-  "mcu": "ESP32",
-  "radio": { "type": "lora", "freq_hz": 868100000, "sf": 7, "bw_hz": 125000, "tx_power_dbm": 14 },
-  "limits": {
-    "tx_power_dbm": { "min": 2, "max": 20 },
-    "freq_hz": { "min": 137000000, "max": 1020000000 }
-  }
-}
+{ "name": "nrf24l01p-pa-lna", "version": 1, "title": "nRF24L01+ PA/LNA module (SMA antenna)",
+  "chip": "nRF24L01+ + RFX2401C",
+  "radio": { "type": "nrf24", "channel": 76, "data_rate": 1000000, "crc_bytes": 2, "tx_power_dbm": 20 },
+  "limits": { "tx_power_dbm": [2, 8, 14, 20] },
+  "antenna_dbi": 2, "lna_db": 3,
+  "supply_v": { "min": 1.9, "max": 3.6 }, "io_5v_tolerant": true,
+  "current_ma": { "tx": 115, "rx": 45 },
+  "pins": [ { "name": "VCC", "role": "power" }, { "name": "CE", "role": "gpio_out" }, ... ],
+  "notes": [ "Never connect VCC to 5 V." ] }
 ```
 
-`limits.tx_power_dbm` is either a range or a list of discrete levels (`[-18, -12, -6, 0]` for the
-nRF24L01+). Limits are enforced when the scenario is loaded and when a stack changes the radio at
-run time. Bump `version` whenever a change could alter results.
+- `limits.tx_power_dbm` is a range or a list of levels. Limits are enforced when the scenario is
+  loaded and when a stack changes the radio at run time.
+- `antenna_dbi` is added to the signal at both ends; `lna_db` lowers the level the receiver needs
+  (nRF24, whose sensitivity is a level; LoRa decisions use SNR, which an LNA does not change).
+- Pin roles: `power`, `gnd`, `spi_sck`, `spi_mosi`, `spi_miso`, `spi_cs`, `gpio_out`, `gpio_in`,
+  `gpio_in_optional`. An MCU lists `pins` for `3v3`, `gnd` and the SPI roles, and `gpio` pins in
+  the order the wiring guide uses them.
+- `ksim wiring rpi-pico nrf24l01p` (or the web UI) prints the connections and warns about supply
+  voltage, 5 V logic on 3.3 V parts and modules that draw more than the MCU's 3.3 V pin supplies.
+- The PA/LNA module's power levels, LNA gain, antenna gain and current are estimates from module
+  specifications, to be checked against measurements (phase 6).
+- Bump `version` whenever a change could alter results; every part's version is in the trace.
 
 ## Stack adapter interface (C ABI v4)
 
@@ -279,7 +301,7 @@ JSON Lines, one event per line. The first line records the versions of everythin
 the run:
 
 ```json
-{"t":0,"ev":"meta","ksim":"0.1.0","abi":4,"format":2,"phy":{"lora":"1"},"stack":{"kervan":"2"},"device":{"esp32-sx1276":"1"}}
+{"t":0,"ev":"meta","ksim":"0.1.0","abi":4,"format":2,"phy":{"lora":"1"},"stack":{"kervan":"2"},"device":{"esp32-sx1276":"1"},"module":{"sx1276":"1"},"mcu":{"esp32":"1"}}
 {"t":1520384,"ev":"tx","node":1,"len":20,"airtime":185344,"data":"02600102000100db69e400010203040506070809"}
 {"t":1705728,"ev":"rx","node":2,"from":1,"rssi":-101.23,"snr":15.8}
 {"t":1705728,"ev":"lost","node":3,"from":1,"reason":"collision"}
@@ -294,7 +316,7 @@ are format 1.
 
 | Add | Where | Code? |
 |---|---|---|
-| A board | `sim/devices/<name>.json` or a `--devices` directory | no |
+| A board, radio module or MCU | `sim/hardware/{boards,modules,mcus}/<name>.json` or a `--hardware` directory | no |
 | A protocol stack (built in) | `sim/stacks/<name>/`, implement `ksim_stack_t`, register in `sim/src/main.cpp` | C (or anything with a C ABI) |
 | Its form in the web UI | `config_schema` in `ksim_stack_t` (see [Config schema](#config-schema)) | JSON in a C string |
 | A protocol stack (separate process) | anywhere; C: `ksim_remote_serve_env(stack)`, Python: subclass `ksim_remote.Stack` | any language that speaks [the protocol](remote-protocol.md) |

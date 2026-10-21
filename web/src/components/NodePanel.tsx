@@ -10,6 +10,7 @@ import type { Catalog, NodeSummary } from '../api';
 import { parseDetail, type Replay } from '../model/replay';
 import {
   effectiveRadio,
+  nodeHardware,
   setKey,
   stacksFor,
   withField,
@@ -18,6 +19,7 @@ import {
   type ScenarioDoc,
 } from '../model/scenario';
 import { PayloadEditor } from './PayloadEditor';
+import { HardwarePicker } from './HardwarePicker';
 import { KeyValueForm, SchemaForm } from './SchemaForm';
 
 interface Props {
@@ -94,8 +96,8 @@ function NodeResults({ id, stats, replay, durationUs }: {
 
 export function NodePanel(props: Props) {
   const { doc, node, catalog } = props;
-  const radio = effectiveRadio(doc, node, catalog.devices, catalog.phys);
-  const device = catalog.devices.find((d) => d.name === node.device);
+  const radio = effectiveRadio(doc, node, catalog.hardware, catalog.phys);
+  const limits = nodeHardware(node, catalog.hardware).limits;
   const stacks = stacksFor(radio.type, catalog.stacks);
   const stack = catalog.stacks.find((s) => s.name === node.stack);
   const compatible = stacks.some((s) => s.name === node.stack);
@@ -111,10 +113,10 @@ export function NodePanel(props: Props) {
   };
 
   let powerHint = '';
-  if (device?.limits.tx_power_levels) {
-    powerHint = `${device.name}: ${device.limits.tx_power_levels.join(', ')} dBm`;
-  } else if (device?.limits.tx_power_dbm) {
-    powerHint = `${device.name}: ${device.limits.tx_power_dbm.min} … ${device.limits.tx_power_dbm.max} dBm`;
+  if (limits?.tx_power_levels) {
+    powerHint = `${limits.tx_power_levels.join(', ')} dBm`;
+  } else if (limits?.tx_power_dbm) {
+    powerHint = `${limits.tx_power_dbm.min} … ${limits.tx_power_dbm.max} dBm`;
   }
 
   return (
@@ -150,22 +152,10 @@ export function NodePanel(props: Props) {
         </div>
       </div>
 
-      <h3>Board and protocol</h3>
-      <div className="row">
-        <label>device</label>
-        <select
-          value={node.device ?? ''}
-          onChange={(e) => set(withField(node, 'device', e.target.value || undefined))}
-        >
-          <option value="">(scenario radio)</option>
-          {catalog.devices.map((d) => (
-            <option key={d.name} value={d.name}>
-              {d.name} — {d.radio.type}
-            </option>
-          ))}
-        </select>
-        {device && <div className="help">{device.description}</div>}
-      </div>
+      <h3>Hardware</h3>
+      <HardwarePicker node={node} hw={catalog.hardware} onChange={set} />
+
+      <h3>Protocol</h3>
       <div className="row">
         <label>stack</label>
         <select

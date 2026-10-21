@@ -1,0 +1,28 @@
+{
+  "name": "sx1276",
+  "version": 1,
+  "title": "SX1276 LoRa (PA_BOOST)",
+  "description": "Semtech SX1276 LoRa transceiver using the PA_BOOST output (e.g. RFM95W, or on TTGO LoRa32 boards).",
+  "chip": "SX1276",
+  "radio": { "type": "lora", "freq_hz": 868100000, "sf": 7, "bw_hz": 125000, "tx_power_dbm": 14 },
+  "limits": {
+    "tx_power_dbm": { "min": 2, "max": 20 },
+    "freq_hz": { "min": 137000000, "max": 1020000000 }
+  },
+  "antenna_dbi": 0,
+  "lna_db": 0,
+  "supply_v": { "min": 1.8, "max": 3.7 },
+  "io_5v_tolerant": false,
+  "current_ma": { "tx": 120, "rx": 10.8 },
+  "pins": [
+    { "name": "VCC", "role": "power" },
+    { "name": "GND", "role": "gnd" },
+    { "name": "NSS", "role": "spi_cs" },
+    { "name": "SCK", "role": "spi_sck" },
+    { "name": "MOSI", "role": "spi_mosi" },
+    { "name": "MISO", "role": "spi_miso" },
+    { "name": "RESET", "role": "gpio_out" },
+    { "name": "DIO0", "role": "gpio_in" }
+  ],
+  "notes": ["3.3 V logic only."]
+}

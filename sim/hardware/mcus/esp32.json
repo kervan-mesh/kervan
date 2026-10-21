@@ -1,0 +1,22 @@
+{
+  "name": "esp32",
+  "version": 1,
+  "title": "ESP32",
+  "description": "Espressif ESP32 (dual Xtensa LX6, 240 MHz), 520 KB SRAM, Wi-Fi and Bluetooth.",
+  "chip": "ESP32",
+  "logic_v": 3.3,
+  "ram_kb": 520,
+  "flash_kb": 4096,
+  "clock_mhz": 240,
+  "supply_out_ma": 500,
+  "pins": {
+    "3v3": "3V3",
+    "gnd": "GND",
+    "spi_sck": "GPIO18 (VSPI SCK)",
+    "spi_mosi": "GPIO23 (VSPI MOSI)",
+    "spi_miso": "GPIO19 (VSPI MISO)",
+    "spi_cs": "GPIO5 (VSPI CS)"
+  },
+  "gpio": ["GPIO26", "GPIO27", "GPIO25"],
+  "notes": ["Firmware: ESP-IDF (C)."]
+}

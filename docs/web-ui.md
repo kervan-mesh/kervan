@@ -8,7 +8,7 @@ cd web && npm ci && npm run build   # once, and after UI changes (Node.js 20.19+
 build/sim/ksim serve                # then open http://127.0.0.1:8080
 ```
 
-`ksim serve [--port P] [--web DIR] [--scenarios DIR] [--devices DIR] [--allow-processes]`
+`ksim serve [--port P] [--web DIR] [--scenarios DIR] [--hardware DIR] [--allow-processes]`
 
 - `--scenarios DIR`: scenarios the UI lists, opens and saves (default: `sim/scenarios` of the
   source tree).
@@ -33,6 +33,7 @@ node. Keys it does not know (such as `process`) are kept.
 | Map | Nodes on a meter grid (drag to move, wheel to zoom, drag the background to pan). Links: who can hear whom without interference — solid both ways, dashed one way; green SNR ≥ 5 dB, yellow ≥ −5 dB, orange below. During a replay: rings for frames on air (purple: relayed), green arrows for receptions, dashed red/orange/gray lines for frames lost to collisions, half-duplex or a receiver that was off, and the stacks' events as labels. |
 | Scenario tab | Description, simulation settings, path loss model, the radio of nodes without a device, node list. |
 | Node tab | Position, device (board), stack, radio overrides and the stack's options — a form generated from the stack's [config schema](simulator.md#config-schema); an empty field means "default" and stays out of the file. After a run: the node's radio statistics, its stack events and end-of-run counters (`*_stats` events). |
+| Hardware (Node tab) | **Scenario radio**, a **Board**, or **MCU + module** picked from the [hardware catalog](simulator.md#hardware-catalog); shows the parts' key data (RAM, logic voltage, power levels, antenna/LNA, current) and the **wiring**: module pin → MCU pin, with warnings (5 V logic, too little current on the 3.3 V pin) and notes. |
 | Payload (Node tab) | What the node sends: **Stack default** (the stack's own test data, `len` bytes), **Fixed bytes** (hex, e.g. `01 A2 FF`) or **Python** — a function `payload(node, seq, t)` returning `bytes`, with a seeded `rng` (⤢ opens a larger editor). Python needs `ksim serve --allow-processes`. Format: [simulator.md, Payloads](simulator.md#payloads). |
 | Packet tab | Click a `tx`, `rx` or `lost` line in the event list: the frame's sender, airtime, everyone who heard it (RSSI/SNR or why it was lost), its fields as the sending stack decodes them, and a hex dump. Hovering a field highlights its bytes. The map draws the frame's receptions on top. |
 | Results tab | Totals, duty cycle per node against the limit, radio losses per node, stack events per node, seed, trace hash and model versions. |

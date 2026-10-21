@@ -30,17 +30,19 @@ if(WIN32)
     target_link_libraries(ksim_httplib INTERFACE ws2_32)
 endif()
 
-# Device profiles (sim/devices/*.json) are compiled into the binary; ksim also loads more at
-# runtime with --devices DIR.
-file(GLOB KSIM_DEVICE_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/devices/*.json)
-list(SORT KSIM_DEVICE_FILES)
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${KSIM_DEVICE_FILES})
-set(KSIM_DEVICES_CPP "")
-foreach(file ${KSIM_DEVICE_FILES})
-    file(READ ${file} content)
-    string(APPEND KSIM_DEVICES_CPP "    R\"ksim_json(${content})ksim_json\",\n")
+# Hardware catalog (sim/hardware/{mcus,modules,boards}/*.json) is compiled into the binary; ksim
+# also loads more at runtime with --hardware DIR.
+set(KSIM_HARDWARE_CPP "")
+foreach(kind mcu module board)
+    file(GLOB files CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/hardware/${kind}s/*.json)
+    list(SORT files)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${files})
+    foreach(file ${files})
+        file(READ ${file} content)
+        string(APPEND KSIM_HARDWARE_CPP "    {\"${kind}\", R\"ksim_json(${content})ksim_json\"},\n")
+    endforeach()
 endforeach()
-configure_file(src/devices_builtin.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/devices_builtin.cpp @ONLY)
+configure_file(src/hardware_builtin.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/hardware_builtin.cpp @ONLY)
 
 # The helper that runs Python payload functions, embedded so ksim needs no file next to it.
 set(KSIM_PAYLOAD_PY_FILE ${CMAKE_CURRENT_SOURCE_DIR}/remote/python/ksim_payload.py)
@@ -66,7 +68,7 @@ add_library(ksim_core
     src/remote/remote.cpp
     src/scenario.cpp
     src/simulator.cpp
-    ${CMAKE_CURRENT_BINARY_DIR}/devices_builtin.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/hardware_builtin.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/payload_helper.cpp
 )
 target_link_libraries(ksim_core PUBLIC ksim_api PRIVATE nlohmann_json::nlohmann_json kervan_warnings)

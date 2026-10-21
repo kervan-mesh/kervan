@@ -1,0 +1,9 @@
+{
+  "name": "esp32s3-sx1262",
+  "version": 1,
+  "title": "ESP32-S3 + SX1262 (e.g. Heltec WiFi LoRa 32 V3)",
+  "description": "ESP32-S3 with a Semtech SX1262 LoRa transceiver (e.g. Heltec WiFi LoRa 32 V3)",
+  "mcu": "esp32-s3",
+  "module": "sx1262",
+  "integrated": true
+}

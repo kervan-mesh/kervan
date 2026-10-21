@@ -66,7 +66,7 @@ interface Props {
 export function ScenarioPanel({ doc, catalog, selected, onChange, onSelect }: Props) {
   const radioType = typeof doc.radio?.type === 'string' ? doc.radio.type : 'lora';
   const phyOptions = catalog.phys[radioType]?.options ?? [];
-  const withoutDevice = doc.nodes.filter((n) => !n.device).length;
+  const withoutDevice = doc.nodes.filter((n) => !n.device && !n.module).length;
 
   const setTop = (key: string, v: ConfigValue | undefined) => {
     const next = { ...doc } as Record<string, unknown>;
@@ -147,7 +147,10 @@ export function ScenarioPanel({ doc, catalog, selected, onChange, onSelect }: Pr
             onClick={() => onSelect(n.id)}
           >
             <span>{n.id}</span>
-            <span>{n.device ?? <span className="hint">scenario radio</span>}</span>
+            <span>
+              {n.device ??
+                (n.module ? [n.mcu, n.module].filter(Boolean).join(' + ') : <span className="hint">scenario radio</span>)}
+            </span>
             <span>{n.stack}</span>
           </div>
         ))}

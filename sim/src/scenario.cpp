@@ -199,7 +199,9 @@ ProcessSpec parse_process(const json &jp, const std::string &where, const std::s
 NodeSpec parse_node(const json &jn, const Scenario &s, const DeviceRegistry &devices,
                     const std::string &where, const std::string &dir)
 {
-    check_object(jn, {"id", "pos", "device", "stack", "config", "radio", "process", "payload"},
+    check_object(jn,
+                 {"id", "pos", "device", "mcu", "module", "stack", "config", "radio", "process",
+                  "payload"},
                  where);
     if (!jn.contains("id") || !jn.contains("pos") || !jn.contains("stack")) {
         fail(where, "needs \"id\", \"pos\" and \"stack\"");
@@ -219,6 +221,20 @@ NodeSpec parse_node(const json &jn, const Scenario &s, const DeviceRegistry &dev
         }
         n.device = *d;
         n.radio = d->radio;
+        if (jn.contains("mcu") || jn.contains("module")) {
+            fail(where, "takes either a \"device\" (board) or \"mcu\" + \"module\", not both");
+        }
+    } else if (jn.contains("module")) {
+        // a module, optionally wired to an MCU
+        try {
+            n.device = devices.combine(get_string(jn, "mcu", "", where),
+                                       get_string(jn, "module", "", where));
+        } catch (const std::runtime_error &e) {
+            fail(where, e.what());
+        }
+        n.radio = n.device->radio;
+    } else if (jn.contains("mcu")) {
+        fail(where, "an \"mcu\" needs a radio \"module\"");
     }
     if (jn.contains("radio")) {
         const json &jr = jn.at("radio");

@@ -224,6 +224,36 @@ protected:
 
 } // namespace
 
+// nRF24 at 1 Mbps needs -85 dBm. 36 m away a 0 dBm frame arrives at -86.69 dBm: lost, unless an
+// LNA (PA/LNA modules) or antenna gain makes up the difference.
+TEST_F(Sim, AntennaGainAndLna)
+{
+    Scenario s = base();
+    NodeSpec a = node(1, 0, "send_at=1000");
+    NodeSpec b = node(2, 36);
+    a.radio.type = b.radio.type = PhyType::Nrf24;
+    a.radio.tx_power_dbm = b.radio.tx_power_dbm = 0.0;
+    s.nodes = {a, b};
+    EXPECT_DOUBLE_EQ(Simulator(s).rssi_dbm(1, 2), -86.69);
+    run(s);
+    EXPECT_TRUE(g_rec[2].rx.empty());
+
+    g_rec.clear();
+    b.radio.lna_db = 3.0; // the receiver hears weaker frames; the level at the antenna is the same
+    s.nodes = {a, b};
+    run(s);
+    ASSERT_EQ(g_rec[2].rx.size(), 1u);
+    EXPECT_DOUBLE_EQ(g_rec[2].rx[0].rssi, -86.69);
+
+    g_rec.clear();
+    b.radio.lna_db = 0.0;
+    a.radio.antenna_dbi = b.radio.antenna_dbi = 2.0; // counted at both ends
+    s.nodes = {a, b};
+    EXPECT_DOUBLE_EQ(Simulator(s).rssi_dbm(1, 2), -82.69);
+    run(s);
+    ASSERT_EQ(g_rec[2].rx.size(), 1u);
+}
+
 TEST_F(Sim, InRangeFrameIsDeliveredAfterAirtime)
 {
     Scenario s = base();
@@ -420,7 +450,7 @@ TEST_F(Sim, TraceLinesAreJson)
     run(s, &trace);
     EXPECT_EQ(trace.str(),
               "{\"t\":0,\"ev\":\"meta\",\"ksim\":\"0.1.0\",\"abi\":4,\"format\":2,\"phy\":{\"lora\":\"1\"},"
-              "\"stack\":{\"test\":\"1\"},\"device\":{}}\n"
+              "\"stack\":{\"test\":\"1\"},\"device\":{},\"module\":{},\"mcu\":{}}\n"
               "{\"t\":1000,\"ev\":\"tx\",\"node\":1,\"len\":10,\"airtime\":41216,"
               "\"data\":\"01010101010101010101\"}\n"
               "{\"t\":42216,\"ev\":\"rx\",\"node\":2,\"from\":1,\"rssi\":-86.0,\"snr\":31.03}\n");

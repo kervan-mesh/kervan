@@ -24,6 +24,9 @@ struct RadioConfig {
     LoraParams lora;
     Nrf24Params nrf24;
     double tx_power_dbm = 14.0;
+    // hardware, from the radio module (not settable in scenarios or at run time)
+    double antenna_dbi = 0.0; // gain of the antenna, added on both transmit and receive
+    double lna_db = 0.0;      // external low-noise amplifier: better sensitivity (nRF24 PA/LNA)
 };
 
 // Everything that differs between radio technologies. Path loss, shadowing, the half-duplex rule

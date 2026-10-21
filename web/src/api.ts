@@ -35,17 +35,66 @@ export interface StackInfo {
 
 export type RadioValues = Record<string, number | string | boolean>;
 
-export interface DeviceInfo {
+export interface Limits {
+  tx_power_dbm?: { min: number; max: number };
+  tx_power_levels?: number[];
+  freq_hz?: { min: number; max: number };
+}
+
+// Hardware catalog (docs/simulator.md, "Hardware"): boards are named MCU + module pairs.
+export interface BoardInfo {
   name: string;
   version: number;
+  title: string;
   description: string;
   mcu: string;
+  module: string;
+  integrated: boolean; // radio on the board, nothing to wire
   radio: RadioValues & { type: string };
-  limits: {
-    tx_power_dbm?: { min: number; max: number };
-    tx_power_levels?: number[];
-    freq_hz?: { min: number; max: number };
-  };
+  limits: Limits;
+}
+
+export interface McuInfo {
+  name: string;
+  version: number;
+  title: string;
+  description: string;
+  chip: string;
+  logic_v: number;
+  ram_kb: number;
+  flash_kb: number;
+  clock_mhz: number;
+  supply_out_ma: number;
+  notes: string[];
+}
+
+export interface ModuleInfo {
+  name: string;
+  version: number;
+  title: string;
+  description: string;
+  chip: string;
+  radio: RadioValues & { type: string };
+  limits: Limits;
+  antenna_dbi: number;
+  lna_db: number;
+  current_ma: { tx: number; rx: number };
+  pins: { name: string; role: string }[];
+  supply_v: { min: number; max: number } | null;
+  notes: string[];
+}
+
+export interface Hardware {
+  boards: BoardInfo[];
+  mcus: McuInfo[];
+  modules: ModuleInfo[];
+}
+
+export interface Wiring {
+  integrated: boolean;
+  rows: { module_pin: string; mcu_pin: string; role: string }[];
+  warnings: string[];
+  notes: string[];
 }
 
 export interface PhyInfo {
@@ -111,7 +160,7 @@ export interface RunResult {
 export interface Catalog {
   info: ServerInfo;
   stacks: StackInfo[];
-  devices: DeviceInfo[];
+  hardware: Hardware;
   phys: Record<string, PhyInfo>;
 }
 
@@ -139,13 +188,13 @@ async function request<T>(method: string, path: string, body?: string): Promise<
 }
 
 export async function loadCatalog(): Promise<Catalog> {
-  const [info, stacks, devices, phys] = await Promise.all([
+  const [info, stacks, hardware, phys] = await Promise.all([
     request<ServerInfo>('GET', '/api/info'),
     request<StackInfo[]>('GET', '/api/stacks'),
-    request<DeviceInfo[]>('GET', '/api/devices'),
+    request<Hardware>('GET', '/api/devices'),
     request<Record<string, PhyInfo>>('GET', '/api/phys'),
   ]);
-  return { info, stacks, devices, phys };
+  return { info, stacks, hardware, phys };
 }
 
 export const listScenarios = () => request<ScenarioEntry[]>('GET', '/api/scenarios');
@@ -176,4 +225,11 @@ export const decodeFrame = (stack: string, config: Record<string, unknown> | und
     'POST',
     '/api/decode',
     JSON.stringify({ stack, config: config ?? {}, data }),
+  );
+
+// How to connect a board (one name) or an MCU and a module.
+export const getWiring = (board: string, module?: string) =>
+  request<Wiring>(
+    'GET',
+    `/api/wiring/${encodeURIComponent(board)}${module ? `/${encodeURIComponent(module)}` : ''}`,
   );

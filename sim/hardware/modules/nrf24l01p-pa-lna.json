@@ -1,0 +1,25 @@
+{
+  "name": "nrf24l01p-pa-lna",
+  "version": 1,
+  "title": "nRF24L01+ PA/LNA module (SMA antenna)",
+  "description": "nRF24L01+ with an RFX2401C power amplifier and low-noise amplifier and an external dipole antenna (e.g. E01-ML01DP5). Output power, LNA gain, antenna gain and current are estimates from module specifications; to be confirmed by measurement.",
+  "chip": "nRF24L01+ + RFX2401C",
+  "radio": { "type": "nrf24", "channel": 76, "data_rate": 1000000, "crc_bytes": 2, "tx_power_dbm": 20 },
+  "limits": { "tx_power_dbm": [2, 8, 14, 20] },
+  "antenna_dbi": 2,
+  "lna_db": 3,
+  "supply_v": { "min": 1.9, "max": 3.6 },
+  "io_5v_tolerant": true,
+  "current_ma": { "tx": 115, "rx": 45 },
+  "pins": [
+    { "name": "VCC", "role": "power" },
+    { "name": "GND", "role": "gnd" },
+    { "name": "CE", "role": "gpio_out" },
+    { "name": "CSN", "role": "spi_cs" },
+    { "name": "SCK", "role": "spi_sck" },
+    { "name": "MOSI", "role": "spi_mosi" },
+    { "name": "MISO", "role": "spi_miso" },
+    { "name": "IRQ", "role": "gpio_in_optional" }
+  ],
+  "notes": ["Never connect VCC to 5 V.", "Draws over 100 mA while sending: add a 10-100 uF capacitor across VCC and GND, or power it from its own 3.3 V regulator.", "Two of these modules closer than about 1 m can overload each other's receiver; use a low power level on the bench."]
+}

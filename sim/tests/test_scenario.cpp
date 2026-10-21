@@ -128,6 +128,34 @@ TEST(Scenario, DeviceProvidesTheRadio)
     EXPECT_EQ(s.nodes[2].radio.lora.sf, 12);
 }
 
+TEST(Scenario, McuAndModule)
+{
+    const ksim::Scenario s = parse_scenario(R"({"nodes": [
+        {"id": 1, "pos": [0, 0], "mcu": "rpi-pico", "module": "nrf24l01p-pa-lna", "stack": "e",
+         "radio": {"tx_power_dbm": 8}},
+        {"id": 2, "pos": [0, 0], "module": "sx1262", "stack": "k"}]})");
+    ASSERT_TRUE(s.nodes[0].device.has_value());
+    EXPECT_EQ(s.nodes[0].device->name, "rpi-pico+nrf24l01p-pa-lna");
+    EXPECT_EQ(s.nodes[0].radio.type, ksim::PhyType::Nrf24);
+    EXPECT_DOUBLE_EQ(s.nodes[0].radio.tx_power_dbm, 8.0);
+    EXPECT_DOUBLE_EQ(s.nodes[0].radio.antenna_dbi, 2.0); // hardware survives radio overrides
+    EXPECT_DOUBLE_EQ(s.nodes[0].radio.lna_db, 3.0);
+    EXPECT_EQ(s.nodes[1].device->name, "sx1262");
+    EXPECT_TRUE(s.nodes[1].device->mcu.empty());
+
+    expect_error(R"({"nodes": [{"id": 1, "pos": [0, 0], "device": "esp32-sx1276",
+                                "module": "sx1276", "stack": "k"}]})",
+                 "not both");
+    expect_error(R"({"nodes": [{"id": 1, "pos": [0, 0], "mcu": "rpi-pico", "stack": "k"}]})",
+                 "needs a radio \"module\"");
+    expect_error(R"({"nodes": [{"id": 1, "pos": [0, 0], "mcu": "rpi-pico", "module": "x",
+                                "stack": "k"}]})",
+                 "unknown module 'x'");
+    expect_error(R"({"nodes": [{"id": 1, "pos": [0, 0], "module": "nrf24l01p-pa-lna",
+                                "radio": {"tx_power_dbm": 0}, "stack": "k"}]})",
+                 "2, 8, 14, 20");
+}
+
 TEST(Scenario, RadioTypesAndDeviceErrors)
 {
     const ksim::Scenario s = parse_scenario(R"({"radio": {"type": "nrf24", "channel": 5},

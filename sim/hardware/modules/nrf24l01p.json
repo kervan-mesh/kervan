@@ -1,0 +1,25 @@
+{
+  "name": "nrf24l01p",
+  "version": 1,
+  "title": "nRF24L01+ module (PCB antenna)",
+  "description": "Nordic nRF24L01+ 2.4 GHz transceiver on the common 8-pin module with a PCB antenna.",
+  "chip": "nRF24L01+",
+  "radio": { "type": "nrf24", "channel": 76, "data_rate": 1000000, "crc_bytes": 2, "tx_power_dbm": 0 },
+  "limits": { "tx_power_dbm": [-18, -12, -6, 0] },
+  "antenna_dbi": 0,
+  "lna_db": 0,
+  "supply_v": { "min": 1.9, "max": 3.6 },
+  "io_5v_tolerant": true,
+  "current_ma": { "tx": 11.3, "rx": 13.5 },
+  "pins": [
+    { "name": "VCC", "role": "power" },
+    { "name": "GND", "role": "gnd" },
+    { "name": "CE", "role": "gpio_out" },
+    { "name": "CSN", "role": "spi_cs" },
+    { "name": "SCK", "role": "spi_sck" },
+    { "name": "MOSI", "role": "spi_mosi" },
+    { "name": "MISO", "role": "spi_miso" },
+    { "name": "IRQ", "role": "gpio_in_optional" }
+  ],
+  "notes": ["Never connect VCC to 5 V.", "A 10 uF capacitor across VCC and GND close to the module makes it reliable."]
+}

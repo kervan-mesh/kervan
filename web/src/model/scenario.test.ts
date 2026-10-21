@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { DeviceInfo, PhyInfo } from '../api';
+import type { Hardware, ModuleInfo, PhyInfo } from '../api';
 import {
   addNode,
   bounds,
@@ -14,6 +14,7 @@ import {
   moveNode,
   newScenario,
   nextNodeId,
+  nodeHardware,
   removeNode,
   setKey,
   stacksFor,
@@ -37,16 +38,53 @@ const phys: Record<string, PhyInfo> = {
   },
 };
 
-const devices: DeviceInfo[] = [
-  {
-    name: 'board',
-    version: 1,
-    description: '',
-    mcu: 'X',
-    radio: { type: 'lora', sf: 9, tx_power_dbm: 20 },
-    limits: {},
-  },
-];
+const loraModule: ModuleInfo = {
+  name: 'lora-mod',
+  version: 1,
+  title: 'LoRa module',
+  description: '',
+  chip: 'SX',
+  radio: { type: 'lora', sf: 9, tx_power_dbm: 20 },
+  limits: { tx_power_dbm: { min: 2, max: 20 } },
+  antenna_dbi: 0,
+  lna_db: 0,
+  current_ma: { tx: 100, rx: 10 },
+  pins: [],
+  supply_v: null,
+  notes: [],
+};
+
+const devices: Hardware = {
+  boards: [
+    {
+      name: 'board',
+      version: 1,
+      title: 'Board',
+      description: '',
+      mcu: 'mcu1',
+      module: 'lora-mod',
+      integrated: true,
+      radio: { type: 'lora', sf: 9, tx_power_dbm: 20 },
+      limits: {},
+    },
+  ],
+  mcus: [
+    {
+      name: 'mcu1',
+      version: 1,
+      title: 'MCU',
+      description: '',
+      chip: 'C',
+      logic_v: 3.3,
+      ram_kb: 2,
+      flash_kb: 32,
+      clock_mhz: 16,
+      supply_out_ma: 50,
+      notes: [],
+    },
+  ],
+  modules: [loraModule, { ...loraModule, name: 'nrf-mod', radio: { type: 'nrf24', channel: 9 } }],
+};
 
 describe('scenario editing', () => {
   it('adds nodes with fresh ids, copying the template but not its address', () => {
@@ -102,6 +140,28 @@ describe('effective radio', () => {
     expect(r.values).toMatchObject({ channel: 5, tx_power_dbm: 0 });
     expect(effectiveRadio({ nodes: [] }, { id: 1, pos: [0, 0], stack: 'e' }, devices, phys).type)
       .toBe('lora');
+  });
+
+  it('resolves boards and MCU + module pairs', () => {
+    const base = { id: 1, pos: [0, 0], stack: 's' };
+    expect(nodeHardware({ ...base, device: 'board' }, devices)).toMatchObject({
+      board: { name: 'board' },
+      mcu: { name: 'mcu1' },
+      module: { name: 'lora-mod' },
+    });
+    const pair = nodeHardware({ ...base, mcu: 'mcu1', module: 'nrf-mod' }, devices);
+    expect(pair.board).toBeUndefined();
+    expect(pair.radio).toEqual({ type: 'nrf24', channel: 9 });
+    expect(nodeHardware({ ...base, module: 'nrf-mod' }, devices).mcu).toBeUndefined();
+    expect(nodeHardware({ ...base, device: 'gone' }, devices).missing).toBe('gone');
+    expect(nodeHardware({ ...base, mcu: 'gone', module: 'nrf-mod' }, devices).missing).toBe('gone');
+    expect(nodeHardware({ ...base, module: 'gone' }, devices).missing).toBe('gone');
+    expect(nodeHardware(base, devices)).toEqual({});
+
+    const doc: ScenarioDoc = { nodes: [] };
+    const r = effectiveRadio(doc, { ...base, mcu: 'mcu1', module: 'nrf-mod' }, devices, phys);
+    expect(r.type).toBe('nrf24');
+    expect(r.values.channel).toBe(9);
   });
 
   it('filters stacks by PHY', () => {

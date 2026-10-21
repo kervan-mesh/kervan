@@ -1,0 +1,9 @@
+{
+  "name": "esp32-sx1276",
+  "version": 1,
+  "title": "ESP32 + SX1276 (e.g. TTGO LoRa32 V2.1)",
+  "description": "ESP32 with a Semtech SX1276 LoRa transceiver on PA_BOOST (e.g. TTGO LoRa32 V2.1)",
+  "mcu": "esp32",
+  "module": "sx1276",
+  "integrated": true
+}

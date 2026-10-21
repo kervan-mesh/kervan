@@ -120,21 +120,35 @@ TEST(ServeApi, Catalogs)
     EXPECT_EQ(info.at("abi"), KSIM_ABI_VERSION);
     EXPECT_EQ(info.at("allow_processes"), false);
 
-    const json devices = body_json(call(api, "GET", "/api/devices"));
-    ASSERT_GE(devices.size(), 3u);
+    const json hw = body_json(call(api, "GET", "/api/devices"));
+    ASSERT_GE(hw.at("boards").size(), 3u);
     bool found = false;
-    for (const json &d : devices) {
+    for (const json &d : hw.at("boards")) {
         if (d.at("name") == "esp32-sx1276") {
             found = true;
             EXPECT_EQ(d.at("radio").at("type"), "lora");
             EXPECT_EQ(d.at("limits").at("tx_power_dbm").at("max"), 20);
+            EXPECT_EQ(d.at("integrated"), true);
+            EXPECT_EQ(d.at("module"), "sx1276");
         }
         if (d.at("name") == "arduino-nrf24l01p") {
             EXPECT_EQ(d.at("radio").at("type"), "nrf24");
             EXPECT_FALSE(d.at("limits").at("tx_power_levels").empty());
+            EXPECT_EQ(d.at("mcu"), "arduino-nano");
         }
     }
     EXPECT_TRUE(found);
+    EXPECT_EQ(hw.at("mcus").size(), 5u);
+    ASSERT_EQ(hw.at("modules").size(), 4u);
+    for (const json &m : hw.at("modules")) {
+        if (m.at("name") == "nrf24l01p-pa-lna") {
+            EXPECT_EQ(m.at("antenna_dbi"), 2);
+            EXPECT_EQ(m.at("lna_db"), 3);
+            EXPECT_EQ(m.at("current_ma").at("tx"), 115);
+            EXPECT_EQ(m.at("pins").size(), 8u);
+            EXPECT_EQ(m.at("supply_v").at("max"), 3.6);
+        }
+    }
 
     const json phys = body_json(call(api, "GET", "/api/phys"));
     EXPECT_EQ(phys.at("lora").at("version"), 1);
@@ -142,6 +156,31 @@ TEST(ServeApi, Catalogs)
     for (const json &o : phys.at("lora").at("options")) {
         EXPECT_TRUE(o.contains("default")) << o.dump();
     }
+}
+
+TEST(ServeApi, Wiring)
+{
+    const Api api(options());
+    json w = body_json(call(api, "GET", "/api/wiring/rpi-pico/nrf24l01p"));
+    EXPECT_EQ(w.at("integrated"), false);
+    ASSERT_EQ(w.at("rows").size(), 8u);
+    EXPECT_EQ(w.at("rows").at(0).at("module_pin"), "VCC");
+    EXPECT_NE(w.at("rows").at(0).at("mcu_pin").get<std::string>().find("3V3"), std::string::npos);
+    EXPECT_TRUE(w.at("warnings").empty());
+
+    w = body_json(call(api, "GET", "/api/wiring/arduino-nano/nrf24l01p-pa-lna"));
+    EXPECT_FALSE(w.at("warnings").empty());
+
+    w = body_json(call(api, "GET", "/api/wiring/esp32-sx1276")); // radio on the board
+    EXPECT_EQ(w.at("integrated"), true);
+    EXPECT_TRUE(w.at("rows").empty());
+    w = body_json(call(api, "GET", "/api/wiring/arduino-nrf24l01p")); // board of parts
+    EXPECT_EQ(w.at("rows").size(), 8u);
+
+    EXPECT_EQ(call(api, "GET", "/api/wiring/nope").status, 404);
+    EXPECT_EQ(call(api, "GET", "/api/wiring/rpi-pico/nope").status, 404);
+    EXPECT_EQ(call(api, "GET", "/api/wiring/rpi-pico/a/b").status, 400);
+    EXPECT_EQ(call(api, "PUT", "/api/wiring/esp32-sx1276").status, 405);
 }
 
 TEST(ServeApi, EveryBuiltinStackHasAValidSchema)

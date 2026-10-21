@@ -1,0 +1,13 @@
+{
+  "description": "Two Raspberry Pi Picos with nRF24L01+ modules, one with the PCB-antenna module (receiver, node 1) and one with the PA/LNA module (sender, node 2), 40 m apart indoors. Node 2 sends a text every 2 s. Open a node's Hardware section for the wiring; phase 6 will run the same setup on real boards.",
+  "seed": 11,
+  "duration_s": 60,
+  "path_loss": { "model": "log_distance", "exponent": 3.0, "shadowing_sigma_db": 3 },
+  "nodes": [
+    { "id": 1, "pos": [0, 0], "mcu": "rpi-pico", "module": "nrf24l01p", "stack": "nrf24-esb", "config": { "addr": "0xE7E7E7E701" } },
+    { "id": 2, "pos": [40, 0], "mcu": "rpi-pico", "module": "nrf24l01p-pa-lna", "stack": "nrf24-esb",
+      "radio": { "tx_power_dbm": 8 },
+      "config": { "send_to": "0xE7E7E7E701", "listen": 0, "send_every_ms": 2000, "jitter_ms": 200 },
+      "payload": { "hex": "4D 65 72 68 61 62 61 20 50 69 63 6F" } }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "arduino-nano",
+  "version": 1,
+  "title": "Arduino Nano",
+  "description": "ATmega328P, 2 KB SRAM, 32 KB flash, 16 MHz, 5 V logic.",
+  "chip": "ATmega328P",
+  "logic_v": 5.0,
+  "ram_kb": 2,
+  "flash_kb": 32,
+  "clock_mhz": 16,
+  "supply_out_ma": 50,
+  "pins": {
+    "3v3": "3V3",
+    "gnd": "GND",
+    "spi_sck": "D13 (SCK)",
+    "spi_mosi": "D11 (MOSI)",
+    "spi_miso": "D12 (MISO)",
+    "spi_cs": "D10 (SS)"
+  },
+  "gpio": ["D9", "D2 (INT0)", "D3 (INT1)"],
+  "notes": []
+}

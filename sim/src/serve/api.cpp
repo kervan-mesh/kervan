@@ -128,26 +128,80 @@ private:
     std::string text_;
 };
 
-json device_json(const DeviceProfile &d)
+json range_json(const Range &r)
 {
-    json j;
-    j["name"] = d.name;
-    j["version"] = d.version;
-    j["description"] = d.description;
-    j["mcu"] = d.mcu;
-    j["radio"] = json_util::radio_json(d.radio);
+    return {{"min", r.min}, {"max", r.max}};
+}
+
+json limits_json(const std::vector<double> &levels, const std::optional<Range> &power,
+                 const std::optional<Range> &freq)
+{
     json limits = json::object();
-    if (d.tx_power_range) {
-        limits["tx_power_dbm"] = {{"min", d.tx_power_range->min}, {"max", d.tx_power_range->max}};
+    if (power) {
+        limits["tx_power_dbm"] = range_json(*power);
     }
-    if (!d.tx_power_levels.empty()) {
-        limits["tx_power_levels"] = d.tx_power_levels;
+    if (!levels.empty()) {
+        limits["tx_power_levels"] = levels;
     }
-    if (d.freq_hz_range) {
-        limits["freq_hz"] = {{"min", d.freq_hz_range->min}, {"max", d.freq_hz_range->max}};
+    if (freq) {
+        limits["freq_hz"] = range_json(*freq);
     }
-    j["limits"] = limits;
+    return limits;
+}
+
+json mcu_json(const McuProfile &m)
+{
+    return {{"name", m.name},         {"version", m.version},   {"title", m.title},
+            {"description", m.description}, {"chip", m.chip},   {"logic_v", m.logic_v},
+            {"ram_kb", m.ram_kb},     {"flash_kb", m.flash_kb}, {"clock_mhz", m.clock_mhz},
+            {"supply_out_ma", m.supply_out_ma}, {"notes", m.notes}};
+}
+
+json module_json(const ModuleProfile &m)
+{
+    json pins = json::array();
+    for (const ModulePin &p : m.pins) {
+        pins.push_back({{"name", p.name}, {"role", p.role}});
+    }
+    json j{{"name", m.name},
+           {"version", m.version},
+           {"title", m.title},
+           {"description", m.description},
+           {"chip", m.chip},
+           {"radio", json_util::radio_json(m.radio)},
+           {"limits", limits_json(m.tx_power_levels, m.tx_power_range, m.freq_hz_range)},
+           {"antenna_dbi", m.radio.antenna_dbi},
+           {"lna_db", m.radio.lna_db},
+           {"current_ma", {{"tx", m.tx_ma}, {"rx", m.rx_ma}}},
+           {"pins", pins},
+           {"notes", m.notes}};
+    j["supply_v"] = m.supply_v ? range_json(*m.supply_v) : json(nullptr);
     return j;
+}
+
+json board_json(const BoardProfile &b, const DeviceProfile &d)
+{
+    return {{"name", b.name},
+            {"version", b.version},
+            {"title", b.title},
+            {"description", b.description},
+            {"mcu", b.mcu},
+            {"module", b.module},
+            {"integrated", b.integrated},
+            {"radio", json_util::radio_json(d.radio)},
+            {"limits", limits_json(d.tx_power_levels, d.tx_power_range, d.freq_hz_range)}};
+}
+
+json wiring_json(const Wiring &w)
+{
+    json rows = json::array();
+    for (const WiringRow &r : w.rows) {
+        rows.push_back({{"module_pin", r.module_pin}, {"mcu_pin", r.mcu_pin}, {"role", r.role}});
+    }
+    return {{"integrated", w.integrated},
+            {"rows", rows},
+            {"warnings", w.warnings},
+            {"notes", w.notes}};
 }
 
 json option(const char *key, const char *type, const char *help)
@@ -241,7 +295,7 @@ json links_json(const Scenario &scn, const Simulator &sim)
             }
             const double rssi = sim.rssi_dbm(tx.id, rx.id);
             const double snr = round2(rssi - noise);
-            if (phy.decodable(tx.radio, rssi, snr)) {
+            if (phy.decodable(tx.radio, rssi + rx.radio.lna_db, snr)) {
                 links.push_back({{"from", tx.id}, {"to", rx.id}, {"rssi", rssi}, {"snr", snr}});
             }
         }
@@ -278,6 +332,10 @@ Response Api::handle(const Request &req) const
                    : route == "run" ? run(req.body)
                                     : decode(req.body);
         }
+        const std::string wiring_prefix = "wiring/";
+        if (route.compare(0, wiring_prefix.size(), wiring_prefix) == 0) {
+            return get ? wiring(route.substr(wiring_prefix.size())) : error(405, "use GET");
+        }
         const std::string scenarios = "scenarios/";
         if (route.compare(0, scenarios.size(), scenarios) == 0) {
             const std::string name = route.substr(scenarios.size());
@@ -306,11 +364,54 @@ Response Api::info() const
 
 Response Api::devices() const
 {
-    json list = json::array();
-    for (const DeviceProfile *d : opt_.devices.all()) {
-        list.push_back(device_json(*d));
+    const DeviceRegistry &reg = opt_.devices;
+    json boards = json::array();
+    for (const DeviceProfile *d : reg.all()) {
+        boards.push_back(board_json(*reg.board_profile(d->name), *d));
     }
-    return json_response(list);
+    json mcus = json::array();
+    for (const McuProfile *m : reg.mcus()) {
+        mcus.push_back(mcu_json(*m));
+    }
+    json modules = json::array();
+    for (const ModuleProfile *m : reg.modules()) {
+        modules.push_back(module_json(*m));
+    }
+    return json_response({{"boards", boards}, {"mcus", mcus}, {"modules", modules}});
+}
+
+// /api/wiring/BOARD or /api/wiring/MCU/MODULE
+Response Api::wiring(const std::string &path) const
+{
+    const DeviceRegistry &reg = opt_.devices;
+    const size_t slash = path.find('/');
+    std::string mcu;
+    std::string module;
+    if (slash == std::string::npos) {
+        const BoardProfile *b = reg.board_profile(path);
+        if (b == nullptr) {
+            return error(404, "no board '" + path + "'");
+        }
+        if (b->integrated) {
+            Wiring w;
+            w.integrated = true;
+            w.notes = reg.module(b->module)->notes;
+            return json_response(wiring_json(w));
+        }
+        mcu = b->mcu;
+        module = b->module;
+    } else {
+        mcu = path.substr(0, slash);
+        module = path.substr(slash + 1);
+    }
+    if (!valid_name(mcu) || !valid_name(module)) {
+        return error(400, "use /api/wiring/BOARD or /api/wiring/MCU/MODULE");
+    }
+    try {
+        return json_response(wiring_json(reg.wiring(mcu, module)));
+    } catch (const std::runtime_error &e) {
+        return error(404, e.what());
+    }
 }
 
 Response Api::stacks() const

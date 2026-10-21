@@ -35,7 +35,7 @@ Golden tests (`KervanStack.GoldenLineScenario`, `Esb.GoldenStarScenario`) pin tr
 them only for intended behaviour changes, after checking the trace diff. Unknown scenario keys are
 errors. Everything is versioned (PHY `version()`, `ksim_stack_t::version`, device profile `version`,
 trace `meta` line): bump the version whenever results can change. Boards are data
-(`sim/devices/*.json`); see "Extending ksim" in `docs/simulator.md`. ESB model spec:
+(`sim/hardware/{mcus,modules,boards}/*.json`, "Hardware catalog" in `docs/simulator.md`). ESB model spec:
 `docs/nrf24-esb.md` (clean-room, datasheet values checked).
 Stack ABI is v4: `ksim_stack_t::config_schema` (JSON) describes a stack's options for the UI; its
 defaults must match the stack's real defaults (`ServeApi.SchemaDefaultsAreTheStackDefaults`).
@@ -139,8 +139,18 @@ arm-none-eabi, ASan/UBSan, coverage (≥90% lines, core + port + sim), 60 s fuzz
   the trace (format 2), packet inspector (receptions, stack-decoded fields via `describe_frame`, hex
   dump). Ideas: user-written Python *decoders* for payload formats; payloads for out-of-process
   nodes; picking frames on the map.
-- [ ] Phase 6 ← next: ESP32 + LoRa port, hardware-in-the-loop bridge; calibrate path-loss exponent
-  and shadowing from real measurements (packet loss / RSSI vs distance) with the user's hardware
-- [ ] Phase 7 — more PHYs, encryption (AES-CCM), energy model, MQTT gateway
+- [x] Phase 5c — hardware catalog: MCUs, radio modules and boards as JSON (`sim/hardware/`); nodes
+  use a board or MCU + module; antenna gain and LNA in the channel; wiring guide (`ksim wiring`,
+  `/api/wiring`, UI) with supply/logic/current warnings. The user owns 2 Picos, nRF24L01+ and
+  nRF24L01+ PA/LNA modules (`pico_nrf24` scenario). PA/LNA numbers are estimates until measured.
+- [ ] Phase 6 — live and hardware-in-the-loop (agreed order, user's Picos + nRF24 first; C, Pico SDK):
+  - [ ] 6a ← next: real-time mode in ksim + live view in the UI (stream instead of replay)
+  - [ ] 6b: Pico + nRF24 firmware reporting tx/rx/ACK/retries over USB; watch real traffic live
+    next to a simulation of the same setup (own nRF24 driver: RF24 is GPL)
+  - [ ] 6c: true HIL: firmware hands its frames to ksim over USB, ksim models the channel; real
+    and virtual nodes in one network (µs collisions of nRF24 only approximate through USB; LoRa fine)
+  - [ ] 6d: calibrate path loss, shadowing and the PA/LNA estimates from measurements
+  - Later: firmware builds per board from the UI, many more board/module profiles
+- [ ] Phase 7 — ESP32 + LoRa port, more PHYs, encryption (AES-CCM), energy model, MQTT gateway
 
 Update this checklist when a phase completes. Record significant design decisions in `docs/`.

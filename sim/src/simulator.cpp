@@ -147,7 +147,7 @@ struct Simulator::Impl {
         const double d = distance_m(from.pos, to.pos);
         const double loss = path_loss_db(scn.path_loss, d, phy_for(tx.type).carrier_hz(tx)) +
                             shadowing_db(from.id, to.id);
-        return round_db(tx.tx_power_dbm - loss);
+        return round_db(tx.tx_power_dbm + tx.antenna_dbi + to.radio.antenna_dbi - loss);
     }
 
     int start_tx(Node &n, const uint8_t *buf, size_t len)
@@ -201,7 +201,9 @@ struct Simulator::Impl {
             }
             const double level = rssi(sender.spec, tx.radio, rx.spec);
             const double snr = round_db(level - phy.noise_floor_dbm(tx.radio, scn.noise_figure_db));
-            if (!phy.decodable(tx.radio, level, snr)) {
+            // an LNA in front of the receiver lowers the level it needs (signal and noise rise together,
+            // so SNR-based PHYs are unaffected)
+            if (!phy.decodable(tx.radio, level + rx.radio.lna_db, snr)) {
                 continue; // below sensitivity: the receiver never notices
             }
 
@@ -331,33 +333,37 @@ struct Simulator::Impl {
         j["ksim"] = version();
         j["abi"] = KSIM_ABI_VERSION;
         j["format"] = kTraceFormat;
-        nlohmann::ordered_json phys = nlohmann::ordered_json::object();
-        nlohmann::ordered_json stks = nlohmann::ordered_json::object();
-        nlohmann::ordered_json devs = nlohmann::ordered_json::object();
-        std::map<std::string, std::string> p, s, d;
+        // hardware: boards by name, and every radio module and MCU (also those of boards)
+        std::map<std::string, std::string> p, s, d, mod, mcu;
         for (const auto &n : nodes) {
             const Phy &phy = phy_for(n->radio.type);
             p[phy.name()] = std::to_string(phy.version());
             s[n->stack_name] = n->stack_version;
             if (n->spec.device) {
-                d[n->spec.device->name] = std::to_string(n->spec.device->version);
+                const DeviceProfile &dev = *n->spec.device;
+                if (dev.board) {
+                    d[dev.name] = std::to_string(dev.version);
+                }
+                mod[dev.module] = std::to_string(dev.module_version);
+                if (!dev.mcu.empty()) {
+                    mcu[dev.mcu] = std::to_string(dev.mcu_version);
+                }
             }
         }
-        for (const auto &[k, v] : p) {
-            phys[k] = v;
-            sum.versions["phy:" + k] = v;
-        }
-        for (const auto &[k, v] : s) {
-            stks[k] = v;
-            sum.versions["stack:" + k] = v;
-        }
-        for (const auto &[k, v] : d) {
-            devs[k] = v;
-            sum.versions["device:" + k] = v;
-        }
-        j["phy"] = phys;
-        j["stack"] = stks;
-        j["device"] = devs;
+        const auto add = [&](const char *key, const char *prefix,
+                             const std::map<std::string, std::string> &versions) {
+            nlohmann::ordered_json obj = nlohmann::ordered_json::object();
+            for (const auto &[k, v] : versions) {
+                obj[k] = v;
+                sum.versions[prefix + k] = v;
+            }
+            j[key] = obj;
+        };
+        add("phy", "phy:", p);
+        add("stack", "stack:", s);
+        add("device", "device:", d);
+        add("module", "module:", mod);
+        add("mcu", "mcu:", mcu);
         emit(j);
     }
 

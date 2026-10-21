@@ -6,7 +6,16 @@
 // The scenario file (docs/simulator.md) as the editor holds it: the parsed JSON itself, so keys
 // the editor does not know (e.g. "process") survive a round trip. All updates return new objects.
 
-import type { DeviceInfo, PhyInfo, RadioValues, StackInfo } from '../api';
+import type {
+  BoardInfo,
+  Hardware,
+  Limits,
+  McuInfo,
+  ModuleInfo,
+  PhyInfo,
+  RadioValues,
+  StackInfo,
+} from '../api';
 
 export type ConfigValue = number | string | boolean;
 
@@ -20,7 +29,9 @@ export interface NodeDoc {
   id: number;
   pos: number[]; // [x, y] or [x, y, z] in meters
   stack: string;
-  device?: string;
+  device?: string; // a board, or:
+  mcu?: string; // an MCU (optional) ...
+  module?: string; // ... with a radio module
   config?: Record<string, ConfigValue>;
   radio?: Record<string, ConfigValue>;
   payload?: PayloadDoc;
@@ -142,14 +153,54 @@ export interface EffectiveRadio {
 
 // The radio a node ends up with, resolved like the simulator does: PHY defaults, then the device
 // (or the scenario radio), then the node's overrides.
+export interface NodeHardware {
+  board?: BoardInfo;
+  mcu?: McuInfo;
+  module?: ModuleInfo;
+  radio?: RadioValues; // the hardware's radio defaults
+  limits?: Limits;
+  missing?: string; // a name the catalog does not know
+}
+
+// What a node runs on: a board ("device"), or a module ("module") optionally on an MCU ("mcu").
+export function nodeHardware(node: NodeDoc, hw: Hardware): NodeHardware {
+  const out: NodeHardware = {};
+  if (node.device) {
+    out.board = hw.boards.find((b) => b.name === node.device);
+    if (!out.board) {
+      return { missing: node.device };
+    }
+    out.mcu = hw.mcus.find((m) => m.name === out.board!.mcu);
+    out.module = hw.modules.find((m) => m.name === out.board!.module);
+    out.radio = out.board.radio;
+    out.limits = out.board.limits;
+    return out;
+  }
+  if (node.mcu) {
+    out.mcu = hw.mcus.find((m) => m.name === node.mcu);
+    if (!out.mcu) {
+      return { missing: node.mcu };
+    }
+  }
+  if (node.module) {
+    out.module = hw.modules.find((m) => m.name === node.module);
+    if (!out.module) {
+      return { ...out, missing: node.module };
+    }
+    out.radio = out.module.radio;
+    out.limits = out.module.limits;
+  }
+  return out;
+}
+
 export function effectiveRadio(
   doc: ScenarioDoc,
   node: NodeDoc,
-  devices: DeviceInfo[],
+  hw: Hardware,
   phys: Record<string, PhyInfo>,
 ): EffectiveRadio {
-  const device = node.device ? devices.find((d) => d.name === node.device) : undefined;
-  const base: Record<string, ConfigValue> = device ? device.radio : (doc.radio ?? {});
+  const hardware = nodeHardware(node, hw).radio;
+  const base: Record<string, ConfigValue> = hardware ?? doc.radio ?? {};
   let type = typeof base.type === 'string' ? base.type : 'lora';
   if (typeof node.radio?.type === 'string') {
     type = node.radio.type;

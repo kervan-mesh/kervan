@@ -1,0 +1,22 @@
+{
+  "name": "rpi-pico",
+  "version": 1,
+  "title": "Raspberry Pi Pico",
+  "description": "RP2040 (dual Cortex-M0+), 264 KB SRAM, 2 MB flash. Pins: Pico SDK default SPI0.",
+  "chip": "RP2040",
+  "logic_v": 3.3,
+  "ram_kb": 264,
+  "flash_kb": 2048,
+  "clock_mhz": 133,
+  "supply_out_ma": 300,
+  "pins": {
+    "3v3": "3V3(OUT) (pin 36)",
+    "gnd": "GND (pin 38)",
+    "spi_sck": "GP18 / SPI0 SCK (pin 24)",
+    "spi_mosi": "GP19 / SPI0 TX (pin 25)",
+    "spi_miso": "GP16 / SPI0 RX (pin 21)",
+    "spi_cs": "GP17 / SPI0 CSn (pin 22)"
+  },
+  "gpio": ["GP20 (pin 26)", "GP21 (pin 27)", "GP22 (pin 29)"],
+  "notes": ["Firmware: Pico SDK (C)."]
+}

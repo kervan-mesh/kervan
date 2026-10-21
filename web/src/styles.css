@@ -725,3 +725,39 @@ input.payload-text {
   width: 100%;
   margin-bottom: 4px;
 }
+
+/* ---- hardware ---- */
+
+.warning {
+  color: var(--warn);
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+details.wiring-box {
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+details.wiring-box summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+table.wiring td:first-child {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  width: 70px;
+}
+
+table.wiring td {
+  text-align: left;
+}
+
+ul.notes {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}

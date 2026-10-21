@@ -56,6 +56,7 @@ private:
     Response check(const std::string &body) const;
     Response run(const std::string &body) const;
     Response decode(const std::string &body) const;
+    Response wiring(const std::string &path) const;
 
     Options opt_;
 };

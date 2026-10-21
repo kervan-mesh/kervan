@@ -1,0 +1,8 @@
+{
+  "name": "arduino-nrf24l01p",
+  "version": 1,
+  "title": "Arduino Nano + nRF24L01+",
+  "description": "Arduino (ATmega328P) with a Nordic nRF24L01+ module, PCB antenna",
+  "mcu": "arduino-nano",
+  "module": "nrf24l01p"
+}

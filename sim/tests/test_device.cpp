@@ -3,8 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+// The hardware catalog: MCUs, radio modules, boards, combinations and wiring.
+
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
@@ -16,10 +19,11 @@ using namespace ksim;
 
 namespace {
 
-void expect_error(const std::string &json, const std::string &needle)
+template <typename Parse>
+void expect_error(Parse parse, const std::string &json, const std::string &needle)
 {
     try {
-        parse_device(json);
+        parse(json, "test");
         ADD_FAILURE() << "no error for: " << json;
     } catch (const std::runtime_error &e) {
         EXPECT_NE(std::string(e.what()).find(needle), std::string::npos)
@@ -27,24 +31,66 @@ void expect_error(const std::string &json, const std::string &needle)
     }
 }
 
+bool has(const std::vector<std::string> &list, const std::string &part)
+{
+    return std::any_of(list.begin(), list.end(),
+                       [&](const std::string &s) { return s.find(part) != std::string::npos; });
+}
+
 } // namespace
 
-TEST(Device, BuiltinProfiles)
+TEST(Device, BuiltinCatalog)
 {
     const DeviceRegistry reg = DeviceRegistry::builtin();
-    EXPECT_GE(reg.all().size(), 3u);
     for (const char *name : {"esp32-sx1276", "esp32s3-sx1262", "arduino-nrf24l01p"}) {
         SCOPED_TRACE(name);
         const DeviceProfile *d = reg.find(name);
         ASSERT_NE(d, nullptr);
+        EXPECT_TRUE(d->board);
         EXPECT_GE(d->version, 1);
         EXPECT_FALSE(d->description.empty());
+        EXPECT_FALSE(d->mcu.empty());
+        EXPECT_GE(d->module_version, 1);
         EXPECT_EQ(d->check(d->radio), "");
     }
     const DeviceProfile *nrf = reg.find("arduino-nrf24l01p");
     EXPECT_EQ(nrf->radio.type, PhyType::Nrf24);
     EXPECT_EQ(nrf->radio.nrf24.channel, 76);
+    EXPECT_EQ(nrf->mcu, "arduino-nano");
+    EXPECT_EQ(nrf->module, "nrf24l01p");
     EXPECT_EQ(reg.find("nope"), nullptr);
+
+    for (const char *m : {"rpi-pico", "rpi-pico-w", "arduino-nano", "esp32", "esp32-s3"}) {
+        EXPECT_NE(reg.mcu(m), nullptr) << m;
+    }
+    for (const char *m : {"nrf24l01p", "nrf24l01p-pa-lna", "sx1276", "sx1262"}) {
+        ASSERT_NE(reg.module(m), nullptr) << m;
+        EXPECT_FALSE(reg.module(m)->pins.empty()) << m;
+    }
+    EXPECT_EQ(reg.mcus().size(), 5u);
+    EXPECT_EQ(reg.modules().size(), 4u);
+    EXPECT_EQ(reg.board_profile("esp32-sx1276")->integrated, true);
+}
+
+TEST(Device, CombineAnMcuWithAModule)
+{
+    const DeviceRegistry reg = DeviceRegistry::builtin();
+    const DeviceProfile d = reg.combine("rpi-pico", "nrf24l01p-pa-lna");
+    EXPECT_EQ(d.name, "rpi-pico+nrf24l01p-pa-lna");
+    EXPECT_FALSE(d.board);
+    EXPECT_EQ(d.mcu, "rpi-pico");
+    EXPECT_EQ(d.radio.type, PhyType::Nrf24);
+    EXPECT_DOUBLE_EQ(d.radio.tx_power_dbm, 20.0);
+    EXPECT_DOUBLE_EQ(d.radio.antenna_dbi, 2.0);
+    EXPECT_DOUBLE_EQ(d.radio.lna_db, 3.0);
+    EXPECT_EQ(d.check(d.radio), "");
+
+    const DeviceProfile bare = reg.combine("", "sx1262"); // a module on its own
+    EXPECT_EQ(bare.name, "sx1262");
+    EXPECT_TRUE(bare.mcu.empty());
+
+    EXPECT_THROW(reg.combine("rpi-pico", "toaster"), std::runtime_error);
+    EXPECT_THROW(reg.combine("abacus", "nrf24l01p"), std::runtime_error);
 }
 
 TEST(Device, Limits)
@@ -69,47 +115,141 @@ TEST(Device, Limits)
     EXPECT_EQ(nrf.check(r), "");
     r.tx_power_dbm = -5.0;
     EXPECT_NE(nrf.check(r).find("-18, -12, -6, 0"), std::string::npos);
+
+    const DeviceProfile pa = reg.combine("", "nrf24l01p-pa-lna");
+    r = pa.radio;
+    r.tx_power_dbm = 0.0;
+    EXPECT_NE(pa.check(r).find("2, 8, 14, 20"), std::string::npos);
+}
+
+TEST(Device, Wiring)
+{
+    const DeviceRegistry reg = DeviceRegistry::builtin();
+
+    // Pico + nRF24: every pin has a place, nothing to warn about
+    Wiring w = reg.wiring("rpi-pico", "nrf24l01p");
+    ASSERT_EQ(w.rows.size(), 8u);
+    const auto pin = [&](const std::string &module_pin) {
+        for (const WiringRow &r : w.rows) {
+            if (r.module_pin == module_pin) {
+                return r.mcu_pin;
+            }
+        }
+        return std::string("<none>");
+    };
+    EXPECT_NE(pin("VCC").find("3V3"), std::string::npos);
+    EXPECT_NE(pin("SCK").find("GP18"), std::string::npos);
+    EXPECT_NE(pin("CSN").find("GP17"), std::string::npos);
+    EXPECT_NE(pin("CE").find("GP20"), std::string::npos);
+    EXPECT_NE(pin("IRQ").find("GP21"), std::string::npos);
+    EXPECT_TRUE(w.warnings.empty());
+    EXPECT_TRUE(has(w.notes, "10 uF"));
+    EXPECT_TRUE(has(w.notes, "Pico SDK"));
+
+    // the PA/LNA module needs more current than an Arduino Nano's 3.3 V pin gives
+    w = reg.wiring("arduino-nano", "nrf24l01p-pa-lna");
+    EXPECT_TRUE(has(w.warnings, "own 3.3 V regulator"));
+    EXPECT_FALSE(has(w.warnings, "level shifter")); // nRF24 inputs are 5 V tolerant
+
+    // SX1276: 3.3 V logic only
+    w = reg.wiring("arduino-nano", "sx1276");
+    EXPECT_TRUE(has(w.warnings, "level shifter"));
+
+    // without an MCU there is nothing to map, but the module's pins are listed
+    w = reg.wiring("", "sx1262");
+    EXPECT_EQ(w.rows.size(), 9u);
+    EXPECT_TRUE(w.rows[0].mcu_pin.empty());
+
+    EXPECT_THROW(reg.wiring("rpi-pico", "nope"), std::runtime_error);
+}
+
+TEST(Device, WiringWarnsAboutMissingPins)
+{
+    DeviceRegistry reg = DeviceRegistry::builtin();
+    reg.add(parse_mcu(R"({"name": "tiny", "title": "Tiny", "logic_v": 3.3, "supply_out_ma": 20,
+                          "pins": {"3v3": "P1", "gnd": "P2"}, "gpio": []})"));
+    reg.add(parse_module(R"({"name": "odd", "radio": {"type": "lora"},
+                             "supply_v": {"min": 4.5, "max": 5.5}, "current_ma": {"tx": 30}})"));
+    Wiring w = reg.wiring("tiny", "nrf24l01p");
+    EXPECT_TRUE(has(w.warnings, "no pin listed for SCK"));
+    EXPECT_TRUE(has(w.warnings, "no pin listed for CE"));
+    EXPECT_FALSE(has(w.warnings, "no pin listed for IRQ")); // optional
+    w = reg.wiring("tiny", "odd");
+    EXPECT_TRUE(has(w.warnings, "needs 4.5-5.5 V"));
+    EXPECT_TRUE(has(w.warnings, "about 20 mA"));
 }
 
 TEST(Device, ParseErrors)
 {
-    expect_error("{", "invalid JSON");
-    expect_error(R"({"version": 1})", "needs a \"name\"");
-    expect_error(R"({"name": "x", "radio": {"sf": 7}})", "needs a \"type\"");
-    expect_error(R"({"name": "x", "radio": {"type": "wifi"}})", "\"lora\" or \"nrf24\"");
-    expect_error(R"({"name": "x", "radio": {"type": "nrf24", "sf": 7}})", "not a nrf24 setting");
-    expect_error(R"({"name": "x", "colour": "red", "radio": {"type": "lora"}})",
+    expect_error(parse_module, "{", "invalid JSON");
+    expect_error(parse_module, R"({"version": 1})", "needs a \"name\"");
+    expect_error(parse_module, R"({"name": "x", "radio": {"sf": 7}})", "needs a \"type\"");
+    expect_error(parse_module, R"({"name": "x", "radio": {"type": "wifi"}})",
+                 "\"lora\" or \"nrf24\"");
+    expect_error(parse_module, R"({"name": "x", "radio": {"type": "nrf24", "sf": 7}})",
+                 "not a nrf24 setting");
+    expect_error(parse_module, R"({"name": "x", "colour": "red", "radio": {"type": "lora"}})",
                  "unknown key 'colour'");
-    expect_error(R"({"name": "x", "radio": {"type": "lora", "tx_power_dbm": 30},
-                     "limits": {"tx_power_dbm": {"min": 0, "max": 20}}})",
+    expect_error(parse_module, R"({"name": "x", "radio": {"type": "lora", "tx_power_dbm": 30},
+                                   "limits": {"tx_power_dbm": {"min": 0, "max": 20}}})",
                  "defaults violate the limits");
-    expect_error(R"({"name": "x", "radio": {"type": "lora"},
-                     "limits": {"tx_power_dbm": {"min": 20, "max": 0}}})",
+    expect_error(parse_module, R"({"name": "x", "radio": {"type": "lora"},
+                                   "limits": {"tx_power_dbm": {"min": 20, "max": 0}}})",
                  "min must not exceed max");
+    expect_error(parse_module, R"({"name": "x", "radio": {"type": "lora"},
+                                   "pins": [{"name": "A", "role": "magic"}]})",
+                 "unknown role 'magic'");
+    expect_error(parse_module, R"({"name": "x", "radio": {"type": "lora"}, "pins": 5})",
+                 "array");
+    expect_error(parse_module, R"({"name": "x", "radio": {"type": "lora"}, "notes": [1]})",
+                 "array of strings");
+
+    expect_error(parse_mcu, R"({"name": "x", "pins": {"vbat": "P1"}})", "unknown key 'vbat'");
+    expect_error(parse_mcu, R"({"name": "x", "gpio": "P1"})", "array of strings");
+    expect_error(parse_board, R"({"name": "x", "mcu": "rpi-pico"})", "needs a \"module\"");
+
+    DeviceRegistry reg = DeviceRegistry::builtin();
+    EXPECT_THROW(reg.add(parse_board(R"({"name": "b", "module": "nope"})")), std::runtime_error);
+    EXPECT_THROW(reg.add(parse_board(R"({"name": "b", "mcu": "nope", "module": "sx1276"})")),
+                 std::runtime_error);
+    EXPECT_EQ(reg.find("b"), nullptr); // a rejected board is not kept
 }
 
 TEST(Device, LoadDirectoryAddsAndOverrides)
 {
     namespace fs = std::filesystem;
-    const fs::path dir = fs::temp_directory_path() / "ksim_test_devices";
+    const fs::path dir = fs::temp_directory_path() / "ksim_test_hardware";
     fs::remove_all(dir);
-    fs::create_directories(dir);
-    std::ofstream(dir / "my-board.json") << R"({"name": "my-board", "version": 3,
-        "description": "custom", "radio": {"type": "nrf24", "channel": 2, "tx_power_dbm": -6}})";
-    std::ofstream(dir / "esp32-sx1276.json") << R"({"name": "esp32-sx1276", "version": 9,
+    fs::create_directories(dir / "modules");
+    fs::create_directories(dir / "boards");
+    std::ofstream(dir / "modules" / "my-radio.json") << R"({"name": "my-radio", "version": 3,
+        "radio": {"type": "nrf24", "channel": 2, "tx_power_dbm": -6}})";
+    std::ofstream(dir / "modules" / "sx1276.json") << R"({"name": "sx1276", "version": 9,
         "radio": {"type": "lora", "sf": 12}})";
+    std::ofstream(dir / "boards" / "my-board.json") << R"({"name": "my-board", "version": 2,
+        "mcu": "rpi-pico", "module": "my-radio"})";
     std::ofstream(dir / "notes.txt") << "ignored";
 
     DeviceRegistry reg = DeviceRegistry::builtin();
     reg.load_dir(dir.string());
     ASSERT_NE(reg.find("my-board"), nullptr);
-    EXPECT_EQ(reg.find("my-board")->version, 3);
+    EXPECT_EQ(reg.find("my-board")->version, 2);
+    EXPECT_EQ(reg.find("my-board")->module_version, 3);
     EXPECT_EQ(reg.find("my-board")->radio.nrf24.channel, 2);
-    EXPECT_EQ(reg.find("esp32-sx1276")->version, 9); // user profile replaces the built-in one
+    // a user module replaces the built-in one, also inside boards that use it
+    EXPECT_EQ(reg.find("esp32-sx1276")->module_version, 9);
     EXPECT_EQ(reg.find("esp32-sx1276")->radio.lora.sf, 12);
 
-    std::ofstream(dir / "broken.json") << "{";
+    std::ofstream(dir / "boards" / "broken.json") << "{";
     EXPECT_THROW(reg.load_dir(dir.string()), std::runtime_error);
+    fs::remove(dir / "boards" / "broken.json");
+    std::ofstream(dir / "boards" / "orphan.json") << R"({"name": "orphan", "module": "gone"})";
+    try {
+        reg.load_dir(dir.string());
+        ADD_FAILURE() << "loaded a board with an unknown module";
+    } catch (const std::runtime_error &e) {
+        EXPECT_NE(std::string(e.what()).find("orphan.json"), std::string::npos) << e.what();
+    }
     EXPECT_THROW(reg.load_dir((dir / "missing").string()), std::runtime_error);
     fs::remove_all(dir);
 }

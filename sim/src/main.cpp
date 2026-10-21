@@ -34,13 +34,15 @@ int usage()
     std::fprintf(stderr,
                  "usage:\n"
                  "  ksim run <scenario.json> [--seed N] [--duration SECONDS] [--trace FILE]\n"
-                 "                           [--devices DIR] [--port P]\n"
+                 "                           [--hardware DIR] [--port P]\n"
                  "      --port P   TCP port for out-of-process nodes (default: any free port)\n"
-                 "  ksim serve [--port P] [--web DIR] [--scenarios DIR] [--devices DIR]\n"
+                 "  ksim serve [--port P] [--web DIR] [--scenarios DIR] [--hardware DIR]\n"
                  "             [--allow-processes]\n"
                  "      web UI on http://127.0.0.1:P (default 8080), see docs/web-ui.md\n"
                  "  ksim stacks                     list protocol stacks\n"
-                 "  ksim devices [--devices DIR]    list device profiles\n"
+                 "  ksim devices [--hardware DIR]   list boards, radio modules and MCUs\n"
+                 "  ksim wiring BOARD | MCU MODULE  how to connect a module to an MCU\n"
+                 "      --hardware DIR: more hardware (DIR/mcus, DIR/modules, DIR/boards)\n"
                  "  ksim version\n");
     return 2;
 }
@@ -91,12 +93,13 @@ void print_summary(const ksim::Scenario &scn, const ksim::Summary &sum)
     std::printf("\ntrace hash %016llx\n", (unsigned long long)sum.trace_hash);
 }
 
-// Pull "--devices DIR" out of args and load it on top of the built-in profiles.
+// Pull "--hardware DIR" (old name: --devices) out of args and load it on top of the built-in
+// hardware catalog (DIR/mcus, DIR/modules, DIR/boards).
 ksim::DeviceRegistry load_devices(std::vector<std::string> &args)
 {
     ksim::DeviceRegistry devices = ksim::DeviceRegistry::builtin();
     for (size_t i = 0; i + 1 < args.size(); i++) {
-        if (args[i] == "--devices") {
+        if (args[i] == "--hardware" || args[i] == "--devices") {
             devices.load_dir(args[i + 1]);
             args.erase(args.begin() + static_cast<std::ptrdiff_t>(i),
                        args.begin() + static_cast<std::ptrdiff_t>(i + 2));
@@ -203,9 +206,59 @@ int serve(std::vector<std::string> args)
 int list_devices(std::vector<std::string> args)
 {
     const ksim::DeviceRegistry devices = load_devices(args);
+    std::printf("boards (\"device\" in a scenario)\n");
     for (const ksim::DeviceProfile *d : devices.all()) {
-        std::printf("%-22s v%-3d %-6s %s\n", d->name.c_str(), d->version,
+        std::printf("  %-22s v%-3d %-6s %s\n", d->name.c_str(), d->version,
                     ksim::phy_for(d->radio.type).name(), d->description.c_str());
+    }
+    std::printf("\nradio modules (\"module\")\n");
+    for (const ksim::ModuleProfile *m : devices.modules()) {
+        std::printf("  %-22s v%-3d %-6s %s\n", m->name.c_str(), m->version,
+                    ksim::phy_for(m->radio.type).name(), m->title.c_str());
+    }
+    std::printf("\nMCUs (\"mcu\", optional)\n");
+    for (const ksim::McuProfile *m : devices.mcus()) {
+        std::printf("  %-22s v%-3d %-10s %s\n", m->name.c_str(), m->version, m->chip.c_str(),
+                    m->title.c_str());
+    }
+    return 0;
+}
+
+// ksim wiring BOARD | MCU MODULE
+int print_wiring(std::vector<std::string> args)
+{
+    const ksim::DeviceRegistry devices = load_devices(args);
+    std::string mcu;
+    std::string module;
+    if (args.size() == 1) {
+        const ksim::BoardProfile *b = devices.board_profile(args[0]);
+        if (b == nullptr) {
+            std::fprintf(stderr, "no board '%s' (see `ksim devices`)\n", args[0].c_str());
+            return 1;
+        }
+        if (b->integrated) {
+            std::printf("%s: the radio is on the board, nothing to wire.\n", b->title.c_str());
+            return 0;
+        }
+        mcu = b->mcu;
+        module = b->module;
+    } else if (args.size() == 2) {
+        mcu = args[0];
+        module = args[1];
+    } else {
+        return usage();
+    }
+    const ksim::Wiring w = devices.wiring(mcu, module);
+    std::printf("%-10s  %-30s  %s\n", "module", "mcu", "role");
+    for (const ksim::WiringRow &r : w.rows) {
+        std::printf("%-10s  %-30s  %s\n", r.module_pin.c_str(),
+                    r.mcu_pin.empty() ? "-" : r.mcu_pin.c_str(), r.role.c_str());
+    }
+    for (const std::string &s : w.warnings) {
+        std::printf("WARNING: %s\n", s.c_str());
+    }
+    for (const std::string &s : w.notes) {
+        std::printf("note: %s\n", s.c_str());
     }
     return 0;
 }
@@ -233,6 +286,9 @@ int main(int argc, char **argv)
         }
         if (cmd == "devices") {
             return list_devices(args);
+        }
+        if (cmd == "wiring") {
+            return print_wiring(args);
         }
         if (cmd == "stacks") {
             for (const ksim_stack_t *stack : builtin_stacks) {

@@ -1,0 +1,22 @@
+{
+  "name": "esp32-s3",
+  "version": 1,
+  "title": "ESP32-S3",
+  "description": "Espressif ESP32-S3 (dual Xtensa LX7, 240 MHz), 512 KB SRAM, Wi-Fi and Bluetooth LE.",
+  "chip": "ESP32-S3",
+  "logic_v": 3.3,
+  "ram_kb": 512,
+  "flash_kb": 8192,
+  "clock_mhz": 240,
+  "supply_out_ma": 500,
+  "pins": {
+    "3v3": "3V3",
+    "gnd": "GND",
+    "spi_sck": "GPIO12 (SPI2 SCK)",
+    "spi_mosi": "GPIO11 (SPI2 MOSI)",
+    "spi_miso": "GPIO13 (SPI2 MISO)",
+    "spi_cs": "GPIO10 (SPI2 CS)"
+  },
+  "gpio": ["GPIO4", "GPIO5", "GPIO6"],
+  "notes": ["Firmware: ESP-IDF (C)."]
+}
