@@ -2,7 +2,8 @@
 
 **Lightweight, transport-agnostic messaging for embedded wireless networks — with a built-in simulator so you can build and test without hardware.**
 
-> ⚠️ **Status: early design phase.** Nothing here is usable yet. APIs and the wire format will change.
+> ⚠️ **Status: early development.** The protocol core, the simulator and its web UI work; real-hardware
+> support is in progress. APIs and the wire format will still change.
 
 Messages travel node to node like a caravan along the Silk Road: hopping across a mesh, resting at
 *kervansaray* gateways, and eventually reaching the wider world (MQTT, the web, your dashboards).
@@ -49,7 +50,8 @@ Going "live" means writing a port — the protocol code does not change.
 | 5 | Web UI: build scenarios visually (boards, protocols, radios, traffic) and watch them run ✅ |
 | 5b | Payloads (length, fixed bytes or a Python function per node) and a packet inspector in the UI ✅ |
 | 5c | Hardware catalog: pick an MCU and a radio module (or a board), with a wiring guide ✅ |
-| 6 | Live mode: real boards (Raspberry Pi Pico + nRF24L01+) next to the simulation, then hardware-in-the-loop; channel model calibrated with real measurements |
+| 6a | Live sessions: run a scenario in real time and watch it in the UI (pause, speed, stop) ✅ |
+| 6b–6d | Real boards (Raspberry Pi Pico + nRF24L01+) next to the simulation, then hardware-in-the-loop; channel model calibrated with real measurements |
 | 7 | ESP32 + LoRa port, more PHYs (BLE, 802.15.4, ESP-NOW), encryption, energy model, MQTT gateway (*Kervansaray*) |
 
 ## Building
@@ -96,16 +98,20 @@ separate process in any language (C and Python clients included) with exactly th
 
 ### Try it: the web UI
 
-Build scenarios on a map — boards, protocols, radios, traffic — run them and watch the replay:
-frames on air, receptions, collisions, relays, duty cycle per node. Needs Node.js (20.19+ or 22.12+) once to
-build the UI.
+Build scenarios on a map — boards (or an MCU plus a radio module, with a wiring guide), protocols,
+radios, payloads, traffic — run them and watch the replay: frames on air, receptions, collisions,
+relays, duty cycle per node, and every frame's bytes and decoded fields. **● Live** runs the same
+scenario in real time instead, with events appearing as they happen. Needs Node.js (20.19+ or
+22.12+) once to build the UI.
 
 ```sh
 cd web && npm ci && npm run build && cd ..
 build/sim/ksim serve        # open http://127.0.0.1:8080
 ```
 
-Try `city_mesh`: 42 nodes in a city district, and what managed flooding costs there. See
+Try `city_mesh` (42 nodes in a city district, and what managed flooding costs there) or
+`pico_nrf24` (two Raspberry Pi Picos with nRF24L01+ modules). Python payloads need
+`ksim serve --allow-processes`. See
 [docs/web-ui.md](docs/web-ui.md).
 
 ### Dev container (recommended)

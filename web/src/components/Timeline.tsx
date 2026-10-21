@@ -8,6 +8,7 @@
 
 import { useEffect, useMemo, useRef } from 'react';
 
+import type { LiveStatus } from '../api';
 import {
   bins,
   formatTime,
@@ -32,11 +33,31 @@ interface Props {
   onSpeed: (speed: number) => void;
   onSelect: (id: number) => void;
   onPacket: (tx: Tx) => void;
+  version: number; // changes when the replay grows (live)
+  live?: LiveControls;
 }
 
-function Activity({ replay, time, onSeek }: Pick<Props, 'replay' | 'time' | 'onSeek'>) {
+// A live session: server-side pause/resume/stop/speed, and whether the view follows "now".
+export interface LiveControls {
+  status: LiveStatus;
+  follow: boolean;
+  speeds: number[];
+  onFollow: () => void;
+  onPause: () => void;
+  onResume: () => void;
+  onStop: () => void;
+  onSpeed: (speed: number) => void;
+}
+
+function Activity({
+  replay,
+  time,
+  onSeek,
+  version,
+  head,
+}: Pick<Props, 'replay' | 'time' | 'onSeek' | 'version'> & { head?: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const data = useMemo(() => bins(replay, 300), [replay]);
+  const data = useMemo(() => bins(replay, 300), [replay, version]);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -73,6 +94,14 @@ function Activity({ replay, time, onSeek }: Pick<Props, 'replay' | 'time' | 'onS
       }
     });
     ctx.globalAlpha = 1;
+    if (head !== undefined) {
+      // the part of a live run that has not happened yet
+      const hx = (head / Math.max(1, replay.duration)) * w;
+      ctx.fillStyle = col('--panel');
+      ctx.globalAlpha = 0.6;
+      ctx.fillRect(hx, 0, w - hx, h);
+      ctx.globalAlpha = 1;
+    }
     const cx = (time / Math.max(1, replay.duration)) * w;
     ctx.strokeStyle = col('--accent');
     ctx.lineWidth = 2;
@@ -80,7 +109,7 @@ function Activity({ replay, time, onSeek }: Pick<Props, 'replay' | 'time' | 'onS
     ctx.moveTo(cx, 0);
     ctx.lineTo(cx, h);
     ctx.stroke();
-  }, [data, time, replay.duration]);
+  }, [data, time, replay.duration, head]);
 
   return (
     <canvas
@@ -117,7 +146,9 @@ function recentEvents(r: Replay, time: number, node: number | null, limit: numbe
     if (tk >= ti && tk >= tj) {
       const a = r.apps[k--]!;
       if (involves(a.node)) {
-        const bad = /timeout|drop|busy|error/.test(a.name) || /drop|limit|fail/i.test(a.detail);
+        const bad =
+          /timeout|drop|busy|error/.test(a.name) ||
+          (a.name.endsWith('_log') && /drop|limit|fail/i.test(a.detail));
         const cls = bad ? 'bad' : a.name.includes('relay') ? 'relay' : a.name === 'app_rx' || a.name === 'app_ack' ? 'ok' : '';
         out.push({ t: a.t, node: a.node, cls, text: `${a.name} ${a.detail}` });
       }
@@ -142,11 +173,12 @@ function recentEvents(r: Replay, time: number, node: number | null, limit: numbe
 }
 
 export function Timeline(props: Props) {
-  const { replay, time } = props;
+  const { replay, time, live } = props;
+  const following = live !== undefined && live.follow;
   const events = recentEvents(replay, time, props.selected, 60);
   const step = (dir: 1 | -1) => {
     const t = nextEventTime(replay, time, dir);
-    if (t !== undefined) {
+    if (t !== undefined && (!props.live || t <= props.live.status.t_us)) {
       props.onPlay(false);
       props.onSeek(t);
     }
@@ -155,34 +187,81 @@ export function Timeline(props: Props) {
   return (
     <div className="timeline">
       <div className="controls">
+        {live && (
+          <div className="buttons live-controls">
+            {live.follow && live.status.state === 'running' ? (
+              <span className="live-badge">● LIVE</span>
+            ) : (
+              <button onClick={live.onFollow} title="Jump to now and follow">
+                ● Go live
+              </button>
+            )}
+            {live.status.state === 'paused' ? (
+              <button onClick={live.onResume}>▶ Resume</button>
+            ) : (
+              <button onClick={live.onPause} disabled={live.status.state !== 'running'}>
+                ❚❚ Pause
+              </button>
+            )}
+            <button onClick={live.onStop} disabled={live.status.state === 'done'} title="End the session now">
+              ■ Stop
+            </button>
+            <label className="hint" htmlFor="live-speed">real time ×</label>
+            <select
+              id="live-speed"
+              value={live.status.speed}
+              onChange={(e) => live.onSpeed(Number(e.target.value))}
+            >
+              {(live.speeds.includes(live.status.speed) ? live.speeds : [...live.speeds, live.status.speed]).map((v) => (
+                <option key={v} value={v}>{v}</option>
+              ))}
+            </select>
+            <span className="hint">
+              {live.status.state === 'paused' ? 'paused at ' : 'now '}
+              {formatTime(live.status.t_us)}
+            </span>
+          </div>
+        )}
         <div className="buttons">
           <button onClick={() => props.onSeek(0)} title="Back to the start">⏮</button>
           <button onClick={() => step(-1)} title="Previous radio event">◀|</button>
-          <button className="primary" onClick={() => props.onPlay(!props.playing)} style={{ minWidth: 70 }}>
-            {props.playing ? '❚❚ Pause' : '▶ Play'}
-          </button>
+          {!following && (
+            <button className="primary" onClick={() => props.onPlay(!props.playing)} style={{ minWidth: 70 }}>
+              {props.playing ? '❚❚ Pause' : '▶ Play'}
+            </button>
+          )}
           <button onClick={() => step(1)} title="Next radio event">|▶</button>
           <span className="clock">
             {formatTime(time)} / {formatTime(replay.duration)}
           </span>
-          <label className="hint" htmlFor="speed">speed</label>
-          <select id="speed" value={props.speed} onChange={(e) => props.onSpeed(Number(e.target.value))}>
-            {SPEEDS.map((s) => (
-              <option key={s} value={s}>{s}×</option>
-            ))}
-          </select>
+          {!following && (
+            <>
+              <label className="hint" htmlFor="speed">replay speed</label>
+              <select id="speed" value={props.speed} onChange={(e) => props.onSpeed(Number(e.target.value))}>
+                {SPEEDS.map((s) => (
+                  <option key={s} value={s}>{s}×</option>
+                ))}
+              </select>
+            </>
+          )}
           {props.selected !== null && <span className="hint">events of node {props.selected}</span>}
         </div>
         <input
           type="range"
           min={0}
-          max={replay.duration}
+          max={live ? Math.max(1, live.status.t_us) : replay.duration}
           step={1000}
           value={time}
           onChange={(e) => props.onSeek(Number(e.target.value))}
           aria-label="Virtual time"
         />
-        <Activity replay={replay} time={time} onSeek={props.onSeek} />
+        <Activity
+          replay={replay}
+          time={time}
+          version={props.version}
+          head={live?.status.t_us}
+          onSeek={(t) => props.onSeek(live ? Math.min(t, live.status.t_us) : t)}
+        />
       </div>
       <div className="events" aria-label="Recent events">
         {events.length === 0 && <div className="empty">no events yet</div>}

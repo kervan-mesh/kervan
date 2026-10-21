@@ -7,18 +7,24 @@
 //
 // URL parameters (handy for sharing and screenshots): ?scenario=NAME&run=1&t=SECONDS&speed=X
 // &node=ID&tab=scenario|node|results|packet&play=0&frame=NODE@SECONDS (inspect that frame)
+// &live=SPEED (start a live session at SPEED x real time)
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   checkScenario,
+  controlLive,
   getScenario,
   listScenarios,
+  liveResult,
   loadCatalog,
   runScenario,
   saveScenario,
+  startLive,
+  streamLive,
   type Catalog,
   type Link,
+  type LiveStatus,
   type RunResult,
   type ScenarioEntry,
 } from './api';
@@ -28,7 +34,14 @@ import { PacketPanel } from './components/PacketPanel';
 import { ResultsPanel } from './components/ResultsPanel';
 import { ScenarioPanel } from './components/ScenarioPanel';
 import { SPEEDS, Timeline } from './components/Timeline';
-import { buildReplay, receptionsOf, type Replay, type Tx } from './model/replay';
+import {
+  appendTrace,
+  buildReplay,
+  emptyReplay,
+  receptionsOf,
+  type Replay,
+  type Tx,
+} from './model/replay';
 import {
   addNode,
   findNode,
@@ -75,6 +88,19 @@ function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+// A live session in progress (POST /api/live/start, streamed over Server-Sent Events).
+interface Live {
+  replay: Replay; // grows with every message
+  doc: ScenarioDoc;
+  docText: string;
+  status: LiveStatus;
+  headAt: number; // performance.now() when status.t_us arrived
+  received: number; // trace lines so far
+  version: number; // bumps with every message, for memoized views
+}
+
+const LIVE_SPEEDS = [1, 10, 100, 1000];
+
 interface Run {
   result: RunResult;
   replay: Replay;
@@ -92,6 +118,11 @@ export function App() {
   const [problem, setProblem] = useState<string | null>(null);
   const [fatal, setFatal] = useState<string | null>(null);
   const [run, setRun] = useState<Run | null>(null);
+  const [live, setLive] = useState<Live | null>(null);
+  const [follow, setFollow] = useState(true); // the view keeps up with a live session
+  const closeStream = useRef<(() => void) | null>(null);
+  // startLiveRun is defined further down; the URL handler at mount reaches it through this
+  const startLiveRef = useRef<((d: ScenarioDoc, speed: number) => Promise<void>) | null>(null);
   const [running, setRunning] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [packet, setPacket] = useState<Tx | null>(null); // frame open in the inspector
@@ -151,6 +182,13 @@ export function App() {
       setDoc(d);
       setName(n);
       setDirty(false);
+      closeStream.current?.();
+      setLive((l) => {
+        if (l && (l.status.state === 'running' || l.status.state === 'paused')) {
+          void controlLive('stop').catch(() => undefined);
+        }
+        return null;
+      });
       setRun(null);
       setPacket(null);
       setSelected(null);
@@ -184,7 +222,9 @@ export function App() {
         if (t === 'scenario' || t === 'node' || t === 'results') {
           setTab(t);
         }
-        if (params.get('run') === '1') {
+        if (params.has('live')) {
+          await startLiveRef.current?.(d, Number(params.get('live')) || 10);
+        } else if (params.get('run') === '1') {
           const replay = await startRun(d, {
             t: Number(params.get('t') ?? 0) * 1e6,
             play: params.get('play') !== '0',
@@ -237,11 +277,110 @@ export function App() {
     }
   }, [doc, edit, selected]);
 
+  // ---- live sessions ----
+
+  const finishLive = useCallback(async (l: Live) => {
+    try {
+      const r = await liveResult();
+      setRun({ result: { ...r, trace: [] }, replay: l.replay, docText: l.docText, doc: l.doc });
+      setLinks(r.links);
+      setTab((t) => (t === 'scenario' ? 'results' : t));
+    } catch (e) {
+      setProblem(errorText(e));
+    }
+    setLive(null);
+    setPlaying(false);
+  }, []);
+
+  const startLiveRun = useCallback(
+    async (d: ScenarioDoc, liveSpeed: number) => {
+      closeStream.current?.();
+      setPlaying(false);
+      try {
+        const status = await startLive(d, liveSpeed);
+        const first: Live = {
+          replay: emptyReplay(status.duration_us),
+          doc: d,
+          docText: JSON.stringify(d),
+          status,
+          headAt: performance.now(),
+          received: 0,
+          version: 0,
+        };
+        setRun(null);
+        setPacket(null);
+        setLive(first);
+        setFollow(true);
+        setTime(0);
+        setProblem(null);
+        let current = first;
+        closeStream.current = streamLive(
+          0,
+          (m) => {
+            appendTrace(current.replay, m.lines);
+            current = {
+              ...current,
+              status: m,
+              headAt: performance.now(),
+              received: m.from + m.lines.length,
+              version: current.version + 1,
+            };
+            setLive(current);
+            if (m.state === 'done') {
+              void finishLive(current);
+            } else if (m.state === 'error') {
+              setProblem(m.error ?? 'the live session failed');
+            }
+          },
+          () => setProblem('The live stream was interrupted.'),
+        );
+      } catch (e) {
+        setProblem(errorText(e));
+      }
+    },
+    [finishLive],
+  );
+
+  startLiveRef.current = startLiveRun;
+
+  const liveControl = useCallback(
+    async (action: 'pause' | 'resume' | 'stop' | 'speed', v?: number) => {
+      try {
+        const status = await controlLive(action, v);
+        setLive((l) => (l ? { ...l, status, headAt: performance.now() } : l));
+      } catch (e) {
+        setProblem(errorText(e));
+      }
+    },
+    [],
+  );
+
+  useEffect(() => () => closeStream.current?.(), []);
+
+  // following a live session: the clock runs at the session's speed, never far past what arrived
+  useEffect(() => {
+    if (!live || !follow) {
+      return;
+    }
+    const { status, headAt } = live;
+    if (status.state !== 'running') {
+      setTime(Math.min(status.t_us, status.duration_us));
+      return;
+    }
+    let frame = requestAnimationFrame(function tick(now) {
+      const ahead = Math.min((now - headAt) * 1000 * status.speed, 250_000 * status.speed);
+      setTime(Math.min(status.t_us + ahead, status.duration_us));
+      frame = requestAnimationFrame(tick);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [live, follow]);
+
   // ---- playback ----
 
-  const replay = run?.replay ?? null;
+  const replay = live?.replay ?? run?.replay ?? null;
+  const playLimit = live ? live.status.t_us : (replay?.duration ?? 0);
   useEffect(() => {
-    if (!playing || !replay) {
+    if (!playing || !replay || (live && follow)) {
       return;
     }
     let last = performance.now();
@@ -251,9 +390,9 @@ export function App() {
       let stop = false;
       setTime((t) => {
         const next = t + dt * 1000 * speed;
-        if (next >= replay.duration) {
+        if (next >= playLimit) {
           stop = true;
-          return replay.duration;
+          return playLimit;
         }
         return next;
       });
@@ -264,7 +403,7 @@ export function App() {
       }
     });
     return () => cancelAnimationFrame(frame);
-  }, [playing, replay, speed]);
+  }, [playing, replay, speed, playLimit, live, follow]);
 
   // keyboard: space play/pause, Delete removes the node, Escape leaves add mode
   useEffect(() => {
@@ -346,7 +485,10 @@ export function App() {
   const stale = run !== null && run.docText !== JSON.stringify(doc);
   const node = selected !== null ? findNode(doc, selected) : undefined;
   const nodeStats = run?.result.summary.nodes.find((n) => n.id === selected);
-  const window_us = Math.max(speed * 250_000, 150_000); // how long an event stays on the map
+  const viewSpeed = live && follow ? live.status.speed : speed;
+  const window_us = Math.max(viewSpeed * 250_000, 150_000); // how long an event stays on the map
+  const liveActive =
+    live !== null && (live.status.state === 'running' || live.status.state === 'paused');
 
   const notes = useMemo(() => {
     const m = new Map<number, string>();
@@ -424,8 +566,20 @@ export function App() {
         <span className="status">
           {doc.nodes.length} nodes · {doc.duration_s ?? 60} s simulated
         </span>
-        <button className="primary" onClick={() => void startRun(doc)} disabled={running}>
+        <button
+          className="primary"
+          onClick={() => void startRun(doc)}
+          disabled={running || liveActive}
+        >
           {running ? 'Running…' : '▶ Run'}
+        </button>
+        <button
+          className="live-button"
+          onClick={() => void startLiveRun(doc, 10)}
+          disabled={running || liveActive}
+          title="Run in real time (10x to start) and watch it as it happens"
+        >
+          ● Live
         </button>
         <button
           title="Theme: auto / light / dark"
@@ -541,7 +695,7 @@ export function App() {
             <button
               className={tab === 'packet' ? 'active' : undefined}
               onClick={() => setTab('packet')}
-              disabled={!run}
+              disabled={!replay}
               title="Click a frame in the event list to inspect it"
             >
               Packet
@@ -574,12 +728,12 @@ export function App() {
               <div className="empty">Select a node on the map.</div>
             ))}
           {tab === 'packet' &&
-            run &&
+            replay &&
             (packet ? (
               <PacketPanel
-                replay={run.replay}
+                replay={replay}
                 tx={packet}
-                doc={run.doc}
+                doc={(live ?? run)!.doc}
                 onSeek={(t) => {
                   setPlaying(false);
                   setTime(t);
@@ -602,7 +756,25 @@ export function App() {
           playing={playing}
           speed={speed}
           selected={selected}
-          onSeek={(t) => setTime(Math.max(0, Math.min(t, replay.duration)))}
+          onSeek={(t) => {
+            setFollow(false);
+            setTime(Math.max(0, Math.min(t, playLimit)));
+          }}
+          version={live?.version ?? 0}
+          live={
+            live
+              ? {
+                  status: live.status,
+                  follow,
+                  speeds: LIVE_SPEEDS,
+                  onFollow: () => setFollow(true),
+                  onPause: () => void liveControl('pause'),
+                  onResume: () => void liveControl('resume'),
+                  onStop: () => void liveControl('stop'),
+                  onSpeed: (v: number) => void liveControl('speed', v),
+                }
+              : undefined
+          }
           onPlay={setPlaying}
           onSpeed={setSpeed}
           onSelect={setSelected}

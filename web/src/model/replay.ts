@@ -48,23 +48,23 @@ export interface Replay {
 
 const RELAY_EVENTS = new Set(['kv_relay']);
 
-export function buildReplay(trace: TraceLine[], duration: number): Replay {
-  const txs: Tx[] = [];
-  const rxs: Rx[] = [];
-  const apps: AppEvent[] = [];
-  let meta: Record<string, unknown> = {};
-  let maxAirtime = 0;
+export function emptyReplay(duration: number): Replay {
+  return { duration, txs: [], rxs: [], apps: [], maxAirtime: 0, meta: {} };
+}
 
+// Add trace lines (in time order, after those already in r) to r. Live sessions call this for
+// every message; nothing is reordered.
+export function appendTrace(r: Replay, trace: TraceLine[]): void {
   for (const line of trace) {
     const node = Number(line.node);
     switch (line.ev) {
       case 'meta':
-        meta = line;
+        r.meta = line;
         break;
       case 'tx': {
         const airtime = Number(line.airtime);
-        maxAirtime = Math.max(maxAirtime, airtime);
-        txs.push({
+        r.maxAirtime = Math.max(r.maxAirtime, airtime);
+        r.txs.push({
           t: line.t,
           end: line.t + airtime,
           node,
@@ -75,7 +75,7 @@ export function buildReplay(trace: TraceLine[], duration: number): Replay {
         break;
       }
       case 'rx':
-        rxs.push({
+        r.rxs.push({
           t: line.t,
           node,
           from: Number(line.from),
@@ -85,24 +85,31 @@ export function buildReplay(trace: TraceLine[], duration: number): Replay {
         });
         break;
       case 'lost':
-        rxs.push({ t: line.t, node, from: Number(line.from), ok: false, reason: String(line.reason) });
+        r.rxs.push({ t: line.t, node, from: Number(line.from), ok: false, reason: String(line.reason) });
         break;
-      case 'app':
-        apps.push({ t: line.t, node, name: String(line.name), detail: String(line.detail ?? '') });
+      case 'app': {
+        const a = { t: line.t, node, name: String(line.name), detail: String(line.detail ?? '') };
+        r.apps.push(a);
+        if (RELAY_EVENTS.has(a.name)) {
+          // a stack reports a relay in the same instant it starts the frame, right after it
+          for (let i = r.txs.length - 1; i >= 0 && r.txs[i]!.t >= a.t; i--) {
+            if (r.txs[i]!.t === a.t && r.txs[i]!.node === a.node) {
+              r.txs[i]!.relay = true;
+            }
+          }
+        }
         break;
+      }
       default:
         break; // newer trace events are ignored, not fatal
     }
   }
+}
 
-  // A stack reports a relay in the same instant it starts the frame.
-  const relayAt = new Set(
-    apps.filter((a) => RELAY_EVENTS.has(a.name)).map((a) => `${a.node}@${a.t}`),
-  );
-  for (const tx of txs) {
-    tx.relay = relayAt.has(`${tx.node}@${tx.t}`);
-  }
-  return { duration, txs, rxs, apps, maxAirtime, meta };
+export function buildReplay(trace: TraceLine[], duration: number): Replay {
+  const r = emptyReplay(duration);
+  appendTrace(r, trace);
+  return r;
 }
 
 // First index whose t is >= t (arrays are sorted by t).

@@ -15,8 +15,8 @@ and a hybrid bridge so real devices can join a simulated network. See README.md 
 - Simulator — **C++20**, discrete-event engine with virtual time, deterministic (seeded),
   radio channel model (path loss, SNR, collisions, airtime per PHY profile). Nodes loaded in-process.
 - Kervansaray — gateway (target: Raspberry Pi Zero 2 W) bridging Kervan ↔ MQTT. C++.
-- Web UI — TypeScript + React, talks to `ksim serve` over HTTP (run, then replay the trace).
-  WebSocket streaming only when live hardware (phase 6) needs it.
+- Web UI — TypeScript + React, talks to `ksim serve` over HTTP (run, then replay the trace; live
+  sessions stream trace lines as Server-Sent Events).
 - First PHY profile: **LoRa** (strictest constraints: tiny payloads, long airtime). BLE, 802.15.4,
   ESP-NOW come later.
 
@@ -96,7 +96,9 @@ build/sim/ksim serve                            # http://127.0.0.1:8080; `npm ru
 Run `npm` for the container on a copy of `web/` (or a separate checkout): `npm ci` there would
 replace the host's `node_modules` with Linux binaries. Check UI changes visually with a headless
 browser screenshot, e.g. `msedge --headless=new --screenshot=out.png --window-size=1500,950
---virtual-time-budget=10000 "http://127.0.0.1:8080/?scenario=line_5&run=1&t=548&play=0"`.
+--virtual-time-budget=10000 "http://127.0.0.1:8080/?scenario=line_5&run=1&t=548&play=0"` (not for
+live sessions: the open event stream keeps the page from going idle). To click through the UI, drive
+the installed Edge with `puppeteer-core` from a scratch directory (not a repo dependency).
 
 ARM Cortex-M4 cross build of core (also run by CI — check code size here):
 ```sh
@@ -144,8 +146,10 @@ arm-none-eabi, ASan/UBSan, coverage (≥90% lines, core + port + sim), 60 s fuzz
   `/api/wiring`, UI) with supply/logic/current warnings. The user owns 2 Picos, nRF24L01+ and
   nRF24L01+ PA/LNA modules (`pico_nrf24` scenario). PA/LNA numbers are estimates until measured.
 - [ ] Phase 6 — live and hardware-in-the-loop (agreed order, user's Picos + nRF24 first; C, Pico SDK):
-  - [ ] 6a ← next: real-time mode in ksim + live view in the UI (stream instead of replay)
-  - [ ] 6b: Pico + nRF24 firmware reporting tx/rx/ACK/retries over USB; watch real traffic live
+  - [x] 6a: live sessions — `Simulator::start/advance_to/finish`, `LiveSession` paces it on a
+    thread (speed × wall clock), SSE `/api/live/stream`, UI ● Live with follow/pause/speed/stop;
+    without hardware the same trace hash as `ksim run` (docs/web-ui.md, "Live")
+  - [ ] 6b ← next: Pico + nRF24 firmware reporting tx/rx/ACK/retries over USB; watch real traffic live
     next to a simulation of the same setup (own nRF24 driver: RF24 is GPL)
   - [ ] 6c: true HIL: firmware hands its frames to ksim over USB, ksim models the channel; real
     and virtual nodes in one network (µs collisions of nRF24 only approximate through USB; LoRa fine)

@@ -4,6 +4,8 @@
  */
 
 #include "api.hpp"
+#include "live.hpp"
+#include "report.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -12,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <optional>
 #include <ostream>
 #include <sstream>
 #include <stdexcept>
@@ -253,6 +256,8 @@ json phy_options(PhyType type)
     return opts;
 }
 
+} // namespace
+
 json summary_json(const Scenario &scn, const Summary &sum)
 {
     json j;
@@ -303,8 +308,6 @@ json links_json(const Scenario &scn, const Simulator &sim)
     return links;
 }
 
-} // namespace
-
 Api::Api(Options options) : opt_(std::move(options)) {}
 
 Response Api::handle(const Request &req) const
@@ -331,6 +334,9 @@ Response Api::handle(const Request &req) const
             return route == "check" ? check(req.body)
                    : route == "run" ? run(req.body)
                                     : decode(req.body);
+        }
+        if (route.compare(0, 5, "live/") == 0) {
+            return live(req.method, route.substr(5), req.body);
         }
         const std::string wiring_prefix = "wiring/";
         if (route.compare(0, wiring_prefix.size(), wiring_prefix) == 0) {
@@ -530,9 +536,9 @@ Response Api::check(const std::string &body) const
     }
 }
 
-Response Api::run(const std::string &body) const
+// Parse a scenario for running and apply the server's rules; a response on failure.
+std::optional<Response> Api::prepare(const std::string &body, Scenario &scn) const
 {
-    Scenario scn;
     try {
         scn = parse_scenario(body, opt_.devices, opt_.scenario_dir);
     } catch (const std::exception &e) {
@@ -555,6 +561,15 @@ Response Api::run(const std::string &body) const
             return error(403, where + "out-of-process nodes are disabled; start "
                                       "`ksim serve --allow-processes` to run them");
         }
+    }
+    return std::nullopt;
+}
+
+Response Api::run(const std::string &body) const
+{
+    Scenario scn;
+    if (auto failed = prepare(body, scn)) {
+        return *failed;
     }
 
     TraceBuffer buffer(opt_.max_trace_bytes);
@@ -643,6 +658,133 @@ Response Api::decode(const std::string &body) const
         }
     }
     return json_response({{"fields", fields}});
+}
+
+// ---- live sessions ----
+
+json snapshot_json(const LiveSession::Snapshot &s)
+{
+    json j{{"state", s.state},       {"t_us", s.t_us},        {"duration_us", s.duration_us},
+           {"speed", s.speed},       {"total_lines", s.total_lines}, {"truncated", s.truncated}};
+    if (!s.error.empty()) {
+        j["error"] = s.error;
+    }
+    return j;
+}
+
+std::string Api::live_message(const LiveSession::Snapshot &s)
+{
+    // the lines are JSON already: splice them in instead of parsing them again
+    std::string out = snapshot_json(s).dump();
+    out.pop_back(); // '}'
+    out += ",\"from\":" + std::to_string(s.from) + ",\"lines\":[";
+    for (size_t i = 0; i < s.lines.size(); i++) {
+        if (i > 0) {
+            out += ',';
+        }
+        out += s.lines[i];
+    }
+    out += "]}";
+    return out;
+}
+
+std::shared_ptr<LiveSession> Api::live_session() const
+{
+    const std::lock_guard<std::mutex> lock(live_m_);
+    return live_;
+}
+
+Response Api::live(const std::string &method, const std::string &action,
+                   const std::string &body) const
+{
+    if (action == "start") {
+        if (method != "POST") {
+            return error(405, "use POST");
+        }
+        json req;
+        try {
+            req = json::parse(body);
+        } catch (const json::parse_error &) {
+            return error(400, "invalid JSON");
+        }
+        if (!req.is_object() || !req.contains("scenario")) {
+            return error(400, "needs {\"scenario\": {...}, \"speed\": 1}");
+        }
+        Scenario scn;
+        if (auto failed = prepare(req.at("scenario").dump(), scn)) {
+            return *failed;
+        }
+        LiveSession::Options o;
+        o.speed = req.value("speed", 1.0);
+        o.max_trace_bytes = opt_.max_trace_bytes;
+        o.program_dir = opt_.program_dir;
+        std::shared_ptr<LiveSession> previous;
+        {
+            const std::lock_guard<std::mutex> lock(live_m_);
+            previous = std::move(live_); // one live session at a time
+        }
+        if (previous) {
+            previous->stop(); // also ends streams that still hold it
+        }
+        previous.reset(); // outside the lock: joining takes a moment
+        std::shared_ptr<LiveSession> session;
+        try {
+            session = std::make_shared<LiveSession>(std::move(scn), opt_.stacks, o);
+        } catch (const std::exception &e) {
+            return error(400, e.what());
+        }
+        {
+            const std::lock_guard<std::mutex> lock(live_m_);
+            live_ = session;
+        }
+        return json_response(snapshot_json(session->poll(0, 0)));
+    }
+
+    const std::shared_ptr<LiveSession> session = live_session();
+    if (!session) {
+        return error(404, "no live session");
+    }
+    if (action == "status") {
+        return method == "GET" ? json_response(snapshot_json(session->poll(~size_t{0}, 0)))
+                               : error(405, "use GET");
+    }
+    if (action == "result") {
+        if (method != "GET") {
+            return error(405, "use GET");
+        }
+        std::string result = session->result();
+        if (result.empty()) {
+            return error(409, "the live session is still running");
+        }
+        Response r;
+        r.body = std::move(result);
+        return r;
+    }
+    if (action == "control") {
+        if (method != "POST") {
+            return error(405, "use POST");
+        }
+        json req;
+        try {
+            req = json::parse(body);
+        } catch (const json::parse_error &) {
+            return error(400, "invalid JSON");
+        }
+        const std::string what = req.is_object() ? req.value("action", "") : "";
+        if (what == "pause") {
+            session->pause();
+        } else if (what == "resume") {
+            session->resume();
+        } else if (what == "stop") {
+            session->stop();
+        } else if (what == "speed" && req.contains("speed") && req.at("speed").is_number()) {
+            session->set_speed(req.at("speed").get<double>());
+        } else {
+            return error(400, "action: pause, resume, stop, or speed with \"speed\": number");
+        }
+        return json_response(snapshot_json(session->poll(~size_t{0}, 0)));
+    }
+    return error(404, "not found");
 }
 
 } // namespace ksim::serve

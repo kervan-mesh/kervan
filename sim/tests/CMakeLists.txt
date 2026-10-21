@@ -14,6 +14,7 @@ add_executable(ksim_tests
     test_engine.cpp
     test_esb.cpp
     test_kervan_stack.cpp
+    test_live.cpp
     test_lora.cpp
     test_nrf24.cpp
     test_remote.cpp

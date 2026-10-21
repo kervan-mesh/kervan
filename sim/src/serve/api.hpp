@@ -9,10 +9,15 @@
 #pragma once
 
 #include <cstddef>
+#include <memory>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "ksim/device.hpp"
+#include "ksim/simulator.hpp"
+#include "live.hpp"
 #include "ksim/stack.h"
 
 namespace ksim::serve {
@@ -45,6 +50,11 @@ public:
     // Safe to call from several threads at once.
     Response handle(const Request &req) const;
 
+    // The live session (POST /api/live/start), for streaming; null if there is none.
+    std::shared_ptr<LiveSession> live_session() const;
+    // One message of the live stream: status plus the new trace lines, as JSON.
+    static std::string live_message(const LiveSession::Snapshot &s);
+
 private:
     Response info() const;
     Response devices() const;
@@ -57,8 +67,13 @@ private:
     Response run(const std::string &body) const;
     Response decode(const std::string &body) const;
     Response wiring(const std::string &path) const;
+    Response live(const std::string &method, const std::string &action,
+                  const std::string &body) const;
+    std::optional<Response> prepare(const std::string &body, Scenario &scn) const;
 
     Options opt_;
+    mutable std::mutex live_m_;
+    mutable std::shared_ptr<LiveSession> live_;
 };
 
 } // namespace ksim::serve

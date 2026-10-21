@@ -233,3 +233,51 @@ export const getWiring = (board: string, module?: string) =>
     'GET',
     `/api/wiring/${encodeURIComponent(board)}${module ? `/${encodeURIComponent(module)}` : ''}`,
   );
+
+// ---- live sessions (docs/web-ui.md, "Live") ----
+
+export interface LiveStatus {
+  state: 'running' | 'paused' | 'done' | 'error';
+  t_us: number;
+  duration_us: number;
+  speed: number;
+  total_lines: number;
+  truncated: boolean;
+  error?: string;
+}
+
+export interface LiveMessage extends LiveStatus {
+  from: number;
+  lines: TraceLine[];
+}
+
+export const startLive = (doc: ScenarioDoc, speed: number) =>
+  request<LiveStatus>('POST', '/api/live/start', JSON.stringify({ scenario: doc, speed }));
+
+export const controlLive = (action: 'pause' | 'resume' | 'stop' | 'speed', speed?: number) =>
+  request<LiveStatus>('POST', '/api/live/control', JSON.stringify({ action, speed }));
+
+export const liveResult = () =>
+  request<Omit<RunResult, 'trace'>>('GET', '/api/live/result');
+
+// Server-Sent Events: one message per poll with the state and the new trace lines. Returns a
+// function that closes the stream.
+export function streamLive(
+  from: number,
+  onMessage: (m: LiveMessage) => void,
+  onError: () => void,
+): () => void {
+  const es = new EventSource(`/api/live/stream?from=${from}`);
+  es.onmessage = (e: MessageEvent<string>) => {
+    const m = JSON.parse(e.data) as LiveMessage;
+    onMessage(m);
+    if (m.state === 'done' || m.state === 'error') {
+      es.close();
+    }
+  };
+  es.onerror = () => {
+    es.close();
+    onError();
+  };
+  return () => es.close();
+}

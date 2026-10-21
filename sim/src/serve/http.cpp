@@ -5,8 +5,11 @@
 
 #include "http.hpp"
 
+#include <exception>
 #include <filesystem>
+#include <memory>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 #include <httplib.h>
@@ -99,6 +102,42 @@ struct HttpServer::Impl {
             res.set_header("Cache-Control", "no-store");
             res.set_content(r.body, r.content_type);
         };
+        // Live sessions stream as Server-Sent Events: one "data:" message per poll with the run's
+        // state and the new trace lines; ?from=N resumes after N lines. Registered before the
+        // catch-all route below, which would match it too.
+        server.Get("/api/live/stream", [this](const httplib::Request &req, httplib::Response &res) {
+            if (!allowed(req, res)) {
+                return;
+            }
+            const std::shared_ptr<LiveSession> session = api.live_session();
+            if (!session) {
+                res.status = 404;
+                res.set_content(R"({"error":"no live session"})", "application/json");
+                return;
+            }
+            size_t from = 0;
+            try {
+                from = req.has_param("from") ? std::stoul(req.get_param_value("from")) : 0;
+            } catch (const std::exception &) {
+                res.status = 400;
+                res.set_content(R"({"error":"from must be a number"})", "application/json");
+                return;
+            }
+            res.set_header("Cache-Control", "no-store");
+            res.set_chunked_content_provider(
+                "text/event-stream", [session, from](size_t, httplib::DataSink &sink) mutable {
+                    const LiveSession::Snapshot snap = session->poll(from, 200);
+                    from += snap.lines.size();
+                    const std::string msg = "data: " + Api::live_message(snap) + "\n\n";
+                    if (!sink.write(msg.data(), msg.size())) {
+                        return false; // the browser went away
+                    }
+                    if (snap.state == "done" || snap.state == "error") {
+                        sink.done();
+                    }
+                    return true;
+                });
+        });
         server.Get(R"(/api/.*)", api_handler);
         server.Put(R"(/api/.*)", api_handler);
         server.Post(R"(/api/.*)", api_handler);

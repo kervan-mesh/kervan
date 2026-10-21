@@ -101,7 +101,7 @@ target_link_libraries(ksim-node PRIVATE ksim_remote_client ksim_stack_kervan ksi
     kervan_warnings)
 
 # `ksim serve`: HTTP API for the web UI (web/). Not part of ksim_core: the simulator needs no network.
-add_library(ksim_serve src/serve/api.cpp src/serve/http.cpp)
+add_library(ksim_serve src/serve/api.cpp src/serve/http.cpp src/serve/live.cpp)
 target_include_directories(ksim_serve PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/serve)
 target_link_libraries(ksim_serve PUBLIC ksim_core PRIVATE ksim_httplib nlohmann_json::nlohmann_json
     kervan_warnings)

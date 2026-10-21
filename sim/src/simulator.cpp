@@ -98,7 +98,7 @@ struct Simulator::Impl {
     uint64_t next_tx_id = 0;
     Summary sum;
     uint64_t hash = 0xCBF29CE484222325ull;
-    bool ran = false;
+    enum class Phase { Idle, Running, Finished } phase = Phase::Idle;
 
     // out-of-process nodes
     uint16_t remote_port = 0;
@@ -109,6 +109,26 @@ struct Simulator::Impl {
 
     std::unique_ptr<PayloadScripts> scripts; // Python payload functions, if any node has one
     std::string fatal;                       // set by a host function to end the run with an error
+
+    // Free what was created after an error or an early end; processes die with their connections.
+    void abort()
+    {
+        for (auto &n : nodes) {
+            if (n->inst != nullptr && n->remote == nullptr) {
+                n->stack->destroy(n->inst);
+            }
+            n->inst = nullptr;
+        }
+        remotes.clear();
+        phase = Phase::Finished;
+    }
+
+    ~Impl()
+    {
+        if (phase == Phase::Running) {
+            abort(); // a live run stopped without finish()
+        }
+    }
 
     void emit(const nlohmann::ordered_json &line)
     {
@@ -510,11 +530,18 @@ void Simulator::set_remote_options(uint16_t port, std::string program_dir,
 
 Summary Simulator::run()
 {
+    start();
+    advance_to(impl_->scn.duration_us);
+    return finish();
+}
+
+void Simulator::start()
+{
     Impl &s = *impl_;
-    if (s.ran) {
-        throw std::logic_error("Simulator::run called twice");
+    if (s.phase != Impl::Phase::Idle) {
+        throw std::logic_error("Simulator::run/start called twice");
     }
-    s.ran = true;
+    s.phase = Impl::Phase::Running;
 
     // Build every node first so a stack may transmit from create().
     std::vector<const NodeSpec *> remote_specs;
@@ -592,28 +619,47 @@ Summary Simulator::run()
             }
         }
 
-        s.queue.run_until(s.scn.duration_us);
+    } catch (...) {
+        s.abort();
+        throw;
+    }
+}
+
+void Simulator::advance_to(Time t)
+{
+    Impl &s = *impl_;
+    if (s.phase != Impl::Phase::Running) {
+        throw std::logic_error("Simulator::advance_to needs a started, unfinished run");
+    }
+    try {
+        s.queue.run_until(std::min(t, s.scn.duration_us));
         if (!s.fatal.empty()) {
             throw std::runtime_error(s.fatal);
         }
-
-        for (auto &n : s.nodes) {
-            n->stack->destroy(n->inst);
-            n->inst = nullptr;
-            s.sum.nodes.push_back(n->stats);
-        }
     } catch (...) {
-        // free what was created; failed processes are killed with their connections
-        for (auto &n : s.nodes) {
-            if (n->inst != nullptr && n->remote == nullptr) {
-                n->stack->destroy(n->inst);
-            }
-            n->inst = nullptr;
-        }
-        s.remotes.clear();
+        s.abort();
         throw;
     }
-    s.sum.duration_us = s.scn.duration_us;
+}
+
+Time Simulator::now() const
+{
+    return impl_->queue.now();
+}
+
+Summary Simulator::finish()
+{
+    Impl &s = *impl_;
+    if (s.phase != Impl::Phase::Running) {
+        throw std::logic_error("Simulator::finish needs a started, unfinished run");
+    }
+    for (auto &n : s.nodes) {
+        n->stack->destroy(n->inst);
+        n->inst = nullptr;
+        s.sum.nodes.push_back(n->stats);
+    }
+    s.phase = Impl::Phase::Finished;
+    s.sum.duration_us = s.queue.now();
     s.sum.trace_hash = s.hash;
     return s.sum;
 }

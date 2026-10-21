@@ -761,3 +761,30 @@ ul.notes {
   color: var(--muted);
   font-size: 12px;
 }
+
+/* ---- live ---- */
+
+button.live-button {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.live-badge {
+  color: var(--danger);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 0 6px;
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.live-controls {
+  padding-bottom: 2px;
+  border-bottom: 1px dashed var(--border);
+  margin-bottom: 2px;
+}

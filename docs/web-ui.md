@@ -1,6 +1,6 @@
 # ksim web UI
 
-Status: **phases 5 and 5b.** Edit a scenario on a map, run it in ksim, and replay what happened:
+Status: **phases 5, 5b, 5c and 6a.** Edit a scenario on a map, run it in ksim, and replay what happened:
 frames, receptions, collisions, relays, the stacks' own events, and every frame's bytes and fields.
 
 ```sh
@@ -19,11 +19,11 @@ build/sim/ksim serve                # then open http://127.0.0.1:8080
 
 ## How it works
 
-**Run, then replay.** A run takes milliseconds to seconds, so the UI does not stream live: it
+**Run, then replay.** A run takes milliseconds to seconds, so **Run** does not stream: it
 sends the scenario to ksim, receives the complete trace, and plays it back like a video (pause,
 speed 0.1×–1000×, jump to any moment, step from one radio event to the next). Runs are
 deterministic, so the same scenario always gives the same replay and the same trace hash as
-`ksim run`.
+`ksim run`. To watch a scenario in real time, use **● Live** (see [Live](#live)).
 
 The UI reads and writes the **same scenario files** as `ksim run`, one line per setting and per
 node. Keys it does not know (such as `process`) are kept.
@@ -49,6 +49,24 @@ URL parameters open a given state, e.g. for a link in an issue:
 `?scenario=city_mesh&run=1&t=540.9&speed=1&node=1&tab=node&play=0` (`t` in seconds);
 `frame=NODE@SECONDS` opens that node's first frame at or after that time in the Packet tab.
 
+## Live
+
+**● Live** runs the scenario in real time instead of all at once: ksim advances virtual time with
+the wall clock (10× to start; 1×, 10×, 100× or 1000× in the timeline) and the UI shows events as
+they happen. The timeline's **● LIVE** badge means the view follows "now"; scrub back to look at
+the past (the replay controls work there) and **Go live** to catch up. **Pause** stops the clock,
+**Stop** ends the session early. When it ends, the result is an ordinary run: Results, Packet and
+the replay work as after **Run**.
+
+Without real hardware a live run is exactly the run **Run** makes (same trace hash), only paced.
+Phase 6b connects real boards to live sessions. One live session runs at a time; starting another
+stops it. `?live=SPEED` in the URL starts one when the page opens.
+
+How it works: `ksim::Simulator` runs in steps (`start`, `advance_to`, `finish`; `run` is
+the three in a row). A `LiveSession` (`sim/src/serve/live.cpp`) owns a simulator and a thread
+that advances it to `speed × elapsed wall time` every 20 ms and keeps the trace lines; the UI
+reads them as Server-Sent Events.
+
 ## API
 
 JSON over HTTP on 127.0.0.1. All POST and PUT bodies are scenario JSON.
@@ -64,6 +82,11 @@ JSON over HTTP on 127.0.0.1. All POST and PUT bodies are scenario JSON.
 | `PUT /api/scenarios/NAME` | save (only valid scenarios; names: letters, digits, `_`, `-`) |
 | `POST /api/check` | validate; returns the links (`from`, `to`, `rssi`, `snr` for every decodable direction) |
 | `POST /api/run` | run; returns `summary`, `links`, `truncated` and `trace` (the trace lines as an array) |
+| `POST /api/live/start` | `{"scenario": {...}, "speed": 10}`: start a live session (same rules as `/api/run`); returns its status |
+| `GET /api/live/stream?from=N` | Server-Sent Events: `data: {state, t_us, duration_us, speed, total_lines, truncated, from, lines: [...]}` about 5 times a second and whenever lines arrive; ends after `done` or `error` |
+| `POST /api/live/control` | `{"action": "pause" \| "resume" \| "stop"}` or `{"action": "speed", "speed": 100}` |
+| `GET /api/live/status` | the status without lines |
+| `GET /api/live/result` | after `done`: `summary`, `links`, `truncated` (409 while running) |
 | `POST /api/decode` | `{"stack", "config", "data": hex}` → `{"fields": [{name, value, offset, len}]}` from the stack's `describe_frame`, or `null` |
 
 Errors come back as `{"error": "..."}` with status 400 (bad scenario, rejected config), 403, 404

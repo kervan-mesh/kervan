@@ -8,9 +8,11 @@ import { describe, expect, it } from 'vitest';
 import type { TraceLine } from '../api';
 import {
   appCounts,
+  appendTrace,
   between,
   bins,
   buildReplay,
+  emptyReplay,
   formatTime,
   lowerBound,
   nextEventTime,
@@ -67,6 +69,15 @@ describe('buildReplay', () => {
     expect(b[0]).toMatchObject({ start: 0, tx: 2, ok: 1, collision: 1, halfDuplex: 0, rxOff: 0 });
     expect(b[1]).toMatchObject({ start: 100000, halfDuplex: 1, rxOff: 1 });
     expect(b.slice(1).every((x) => x.tx === 0)).toBe(true);
+  });
+
+  it('builds the same replay from pieces, as a live stream delivers it', () => {
+    for (let cut = 0; cut <= trace.length; cut++) {
+      const live = emptyReplay(1_000_000);
+      appendTrace(live, trace.slice(0, cut));
+      appendTrace(live, trace.slice(cut));
+      expect(live).toEqual(r);
+    }
   });
 
   it('links frames and receptions', () => {

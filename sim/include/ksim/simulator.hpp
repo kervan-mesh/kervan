@@ -109,6 +109,14 @@ public:
     // Throws std::runtime_error if a stack is unknown or rejects its config.
     Summary run();
 
+    // The same in steps, for live runs paced by a clock: run() == start(); advance_to(duration);
+    // finish(). Between steps the simulator is idle, so another thread may pace it. finish() may
+    // come early (the summary then covers the time run so far). Errors throw like run().
+    void start();
+    void advance_to(Time t); // run every event up to min(t, duration)
+    Time now() const;
+    Summary finish();
+
     // Received signal strength from one node at another with their scenario radios (0.01 dB).
     double rssi_dbm(uint32_t from_id, uint32_t to_id) const;
 
