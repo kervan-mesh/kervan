@@ -1,5 +1,5 @@
 {
-  "description": "Two Raspberry Pi Picos with nRF24L01+ modules, one with the PCB-antenna module (receiver, node 1) and one with the PA/LNA module (sender, node 2), 40 m apart indoors. Node 2 sends a text every 2 s. Open a node's Hardware section for the wiring; phase 6 will run the same setup on real boards.",
+  "description": "Two Raspberry Pi Picos with nRF24L01+ modules, one with the PCB-antenna module (receiver, node 1) and one with the PA/LNA module (sender, node 2), 40 m apart indoors. Node 2 sends a text every 2 s. Open a node's Hardware section for the wiring. With the Kervan firmware on the Picos (docs/hardware.md), pick their serial ports under Real board and press Live to run the real boards next to this simulation.",
   "seed": 11,
   "duration_s": 60,
   "path_loss": { "model": "log_distance", "exponent": 3.0, "shadowing_sigma_db": 3 },

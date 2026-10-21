@@ -335,6 +335,9 @@ Response Api::handle(const Request &req) const
                    : route == "run" ? run(req.body)
                                     : decode(req.body);
         }
+        if (route == "ports" || route.compare(0, 6, "ports/") == 0) {
+            return ports(route.size() > 6 ? route.substr(6) : "", req.method, req.body);
+        }
         if (route.compare(0, 5, "live/") == 0) {
             return live(req.method, route.substr(5), req.body);
         }
@@ -660,12 +663,57 @@ Response Api::decode(const std::string &body) const
     return json_response({{"fields", fields}});
 }
 
+// ---- real boards ----
+
+Response Api::ports(const std::string &action, const std::string &method,
+                    const std::string &body) const
+{
+    if (action.empty()) {
+        if (method != "GET") {
+            return error(405, "use GET");
+        }
+        const std::vector<std::string> list =
+            opt_.list_ports ? opt_.list_ports() : hw::list_serial_ports();
+        json out = json::array();
+        for (const std::string &p : list) {
+            out.push_back({{"port", p}});
+        }
+        return json_response({{"ports", out}});
+    }
+    if (action != "hello") {
+        return error(404, "not found");
+    }
+    if (method != "POST") {
+        return error(405, "use POST");
+    }
+    json req;
+    try {
+        req = json::parse(body);
+    } catch (const json::parse_error &) {
+        return error(400, "invalid JSON");
+    }
+    if (!req.is_object() || !req.contains("port") || !req.at("port").is_string() ||
+        req.at("port").get<std::string>().empty()) {
+        return error(400, "needs {\"port\": \"COM5\"}");
+    }
+    const std::string port = req.at("port").get<std::string>();
+    try {
+        const auto io = opt_.open_port ? opt_.open_port(port) : hw::open_serial(port);
+        const hw::BoardHello h = hw::hello(*io, 2000);
+        return json_response({{"hello", json::parse(h.json)}});
+    } catch (const std::exception &e) {
+        return error(400, e.what());
+    }
+}
+
 // ---- live sessions ----
 
 json snapshot_json(const LiveSession::Snapshot &s)
 {
-    json j{{"state", s.state},       {"t_us", s.t_us},        {"duration_us", s.duration_us},
-           {"speed", s.speed},       {"total_lines", s.total_lines}, {"truncated", s.truncated}};
+    json j{{"state", s.state},          {"t_us", s.t_us},
+           {"duration_us", s.duration_us}, {"speed", s.speed},
+           {"hardware", s.hardware},    {"total_lines", s.total_lines},
+           {"truncated", s.truncated}};
     if (!s.error.empty()) {
         j["error"] = s.error;
     }
@@ -718,6 +766,7 @@ Response Api::live(const std::string &method, const std::string &action,
         o.speed = req.value("speed", 1.0);
         o.max_trace_bytes = opt_.max_trace_bytes;
         o.program_dir = opt_.program_dir;
+        o.open_port = opt_.open_port;
         std::shared_ptr<LiveSession> previous;
         {
             const std::lock_guard<std::mutex> lock(live_m_);
@@ -771,16 +820,20 @@ Response Api::live(const std::string &method, const std::string &action,
             return error(400, "invalid JSON");
         }
         const std::string what = req.is_object() ? req.value("action", "") : "";
+        bool done = true;
         if (what == "pause") {
-            session->pause();
+            done = session->pause();
         } else if (what == "resume") {
-            session->resume();
+            done = session->resume();
         } else if (what == "stop") {
             session->stop();
         } else if (what == "speed" && req.contains("speed") && req.at("speed").is_number()) {
-            session->set_speed(req.at("speed").get<double>());
+            done = session->set_speed(req.at("speed").get<double>());
         } else {
             return error(400, "action: pause, resume, stop, or speed with \"speed\": number");
+        }
+        if (!done) {
+            return error(409, "real boards run in real time: no pause or speed change");
         }
         return json_response(snapshot_json(session->poll(~size_t{0}, 0)));
     }

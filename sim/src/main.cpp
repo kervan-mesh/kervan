@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
+#include <memory>
 #include <iterator>
 #include <fstream>
 #include <string>
@@ -21,7 +22,10 @@
 #include "ksim/stacks/kervan.h"
 #include "ksim/stacks/nrf24_esb.h"
 #include "api.hpp"
+#include "board.hpp"
 #include "http.hpp"
+#include "serial.hpp"
+#include "virtual_board.hpp"
 
 namespace {
 
@@ -37,12 +41,15 @@ int usage()
                  "                           [--hardware DIR] [--port P]\n"
                  "      --port P   TCP port for out-of-process nodes (default: any free port)\n"
                  "  ksim serve [--port P] [--web DIR] [--scenarios DIR] [--hardware DIR]\n"
-                 "             [--allow-processes]\n"
+                 "             [--allow-processes] [--virtual-boards N]\n"
                  "      web UI on http://127.0.0.1:P (default 8080), see docs/web-ui.md\n"
+                 "      --virtual-boards N: N boards without hardware (ports virtual:1..N)\n"
                  "  ksim stacks                     list protocol stacks\n"
                  "  ksim devices [--hardware DIR]   list boards, radio modules and MCUs\n"
                  "  ksim wiring BOARD | MCU MODULE  how to connect a module to an MCU\n"
                  "      --hardware DIR: more hardware (DIR/mcus, DIR/modules, DIR/boards)\n"
+                 "  ksim ports                      list serial ports (real boards)\n"
+                 "  ksim hello PORT                 ask the board on PORT what it is\n"
                  "  ksim version\n");
     return 2;
 }
@@ -170,6 +177,7 @@ int serve(std::vector<std::string> args)
     opt.scenario_dir = KSIM_DEFAULT_SCENARIO_DIR;
     std::string web_dir = KSIM_DEFAULT_WEB_DIR;
     uint16_t port = 8080;
+    int virtual_boards = 0;
     for (size_t i = 0; i < args.size(); i++) {
         const std::string &key = args[i];
         if (key == "--allow-processes") {
@@ -186,9 +194,28 @@ int serve(std::vector<std::string> args)
             web_dir = val;
         } else if (key == "--scenarios") {
             opt.scenario_dir = val;
+        } else if (key == "--virtual-boards") {
+            virtual_boards = std::atoi(val.c_str());
+            if (virtual_boards < 1 || virtual_boards > 8) {
+                return usage();
+            }
         } else {
             return usage();
         }
+    }
+
+    // virtual boards (docs/hardware.md) next to the serial ports
+    const auto boards = std::make_shared<ksim::hw::VirtualBoards>(virtual_boards);
+    if (virtual_boards > 0) {
+        opt.list_ports = [boards] {
+            std::vector<std::string> ports = ksim::hw::list_serial_ports();
+            const std::vector<std::string> v = boards->ports();
+            ports.insert(ports.end(), v.begin(), v.end());
+            return ports;
+        };
+        opt.open_port = [boards](const std::string &p) {
+            return boards->owns(p) ? boards->open(p) : ksim::hw::open_serial(p);
+        };
     }
 
     const std::string scenario_dir = opt.scenario_dir;
@@ -289,6 +316,17 @@ int main(int argc, char **argv)
         }
         if (cmd == "wiring") {
             return print_wiring(args);
+        }
+        if (cmd == "ports" && args.empty()) {
+            for (const std::string &p : ksim::hw::list_serial_ports()) {
+                std::printf("%s\n", p.c_str());
+            }
+            return 0;
+        }
+        if (cmd == "hello" && args.size() == 1) {
+            const auto io = ksim::hw::open_serial(args[0]);
+            std::printf("%s\n", ksim::hw::hello(*io, 3000).json.c_str());
+            return 0;
         }
         if (cmd == "stacks") {
             for (const ksim_stack_t *stack : builtin_stacks) {

@@ -15,6 +15,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         gdb \
         gcc-arm-none-eabi \
         libnewlib-arm-none-eabi \
+        libstdc++-arm-none-eabi-newlib \
+        libusb-1.0-0-dev \
+        pkg-config \
         git \
         ca-certificates \
         python3 \
@@ -38,6 +41,20 @@ RUN set -eu; \
     tar -xJf "/tmp/$file" -C /usr/local --strip-components=1 --no-same-owner; \
     rm "/tmp/$file"; \
     node --version
+
+# Raspberry Pi Pico SDK and picotool for the board firmware (firmware/pico_nrf24).
+ARG PICO_SDK_VERSION=2.2.0
+RUN set -eu; \
+    git clone --depth 1 --branch "${PICO_SDK_VERSION}" https://github.com/raspberrypi/pico-sdk.git /opt/pico-sdk; \
+    git -C /opt/pico-sdk submodule update --init --depth 1 lib/tinyusb lib/cyw43-driver; \
+    git clone --depth 1 --branch "${PICO_SDK_VERSION}" https://github.com/raspberrypi/picotool.git /tmp/picotool; \
+    cmake -S /tmp/picotool -B /tmp/picotool/build -G Ninja -DPICO_SDK_PATH=/opt/pico-sdk \
+        -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local > /dev/null; \
+    cmake --build /tmp/picotool/build; \
+    cmake --install /tmp/picotool/build > /dev/null; \
+    rm -rf /tmp/picotool; \
+    picotool version
+ENV PICO_SDK_PATH=/opt/pico-sdk
 
 # ubuntu:24.04 ships a default non-root user "ubuntu" (uid 1000); work as that user.
 USER ubuntu

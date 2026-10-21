@@ -21,7 +21,8 @@ and a hybrid bridge so real devices can join a simulated network. See README.md 
   ESP-NOW come later.
 
 Exists so far: `core/` (frame, node, PAL), `port/udp/` (PC port, peer lists define topology),
-`examples/udp_demo/`, `tests/`, `fuzz/`, `sim/` (ksim simulator), `docs/`.
+`examples/udp_demo/`, `tests/`, `fuzz/`, `sim/` (ksim simulator), `firmware/` (board firmware for
+live sessions), `docs/`.
 Wire format: `docs/frame-format.md`. Messaging (pub/sub, QoS, fragments, duty cycle, mesh):
 `docs/messaging.md`. Simulator: `docs/simulator.md`. Out-of-process stacks:
 `docs/remote-protocol.md` (`sim/remote/`: C client, Python client, `ksim-node`). Web UI: `web/`
@@ -47,6 +48,14 @@ Trace format 2 (`"format"` in the meta line) puts frame bytes into `tx` lines.
 API (`ksim::serve::Api`) is tested without sockets. The web UI knows no protocol: stacks describe
 their options (schema) and report events by name. Keep UI logic in `web/src/model/` (pure, vitest)
 and drawing in `web/src/components/`.
+Board firmware (`docs/hardware.md`): `firmware/common/` is portable C99 like core (own nRF24
+driver from the datasheet — RF24 is GPL —, protocol JSON, the firmware logic `kfw_app`) and is
+tested on the PC against the nRF24 register model in `firmware/testing/`;
+`firmware/pico_nrf24/` is a separate Pico SDK project (SDK 2.2 in the dev container, CI job
+"firmware" builds the `.uf2`s). ksim talks to boards through `sim/src/hw/` (`ksim_hw`: serial
+ports, `hw::LineIo`, virtual boards = firmware logic on modelled chips); `LiveSession` merges
+their reports into the trace as `"ev":"hw"` lines (not hashed) and then runs in real time only.
+Board protocol changes bump `KFW_PROTOCOL` / `hw::kProtocol` together.
 Ports drive the node from their main loop (`kv_node_on_rx/on_tx_done/tick`, `next_deadline`) and
 never call core from inside a PAL callback or an interrupt.
 
@@ -88,6 +97,12 @@ volume (`-v kervan-build:/build`, owned by uid 1000) to keep builds between `doc
 
 Simulator: `build/sim/ksim run sim/scenarios/line_5.json [--seed N] [--trace out.jsonl]`.
 
+Pico firmware (in the dev container; `-DPICO_BOARD=pico_w` for the Pico W):
+```sh
+cmake -S firmware/pico_nrf24 -B /tmp/fw -G Ninja && cmake --build /tmp/fw   # /tmp/fw/kervan_nrf24.uf2
+```
+`ksim serve --virtual-boards 2` offers boards without hardware (ports `virtual:1`, `virtual:2`).
+
 Web UI (Node.js 20.19+/22.12+; in the container too):
 ```sh
 cd web && npm ci && npm test && npm run build   # typecheck + vitest + bundle into web/dist
@@ -117,8 +132,9 @@ CC=clang cmake -S . -B /tmp/b-fz -DKERVAN_BUILD_FUZZERS=ON -DKERVAN_BUILD_TESTS=
 ```
 
 CI (`.github/workflows/ci.yml`): GCC, Clang (Linux), MSVC (Windows), Apple Clang (macOS),
-arm-none-eabi, ASan/UBSan, coverage (≥90% lines, core + port + sim), 60 s fuzzing per target, web UI
-(typecheck, vitest, build) — on every push/PR.
+arm-none-eabi, ASan/UBSan, coverage (≥90% lines, core + port + sim + firmware/common), 60 s fuzzing
+per target, web UI (typecheck, vitest, build), Pico firmware (Pico + Pico W `.uf2` artifacts) — on
+every push/PR.
 
 ## Roadmap status
 
@@ -149,9 +165,12 @@ arm-none-eabi, ASan/UBSan, coverage (≥90% lines, core + port + sim), 60 s fuzz
   - [x] 6a: live sessions — `Simulator::start/advance_to/finish`, `LiveSession` paces it on a
     thread (speed × wall clock), SSE `/api/live/stream`, UI ● Live with follow/pause/speed/stop;
     without hardware the same trace hash as `ksim run` (docs/web-ui.md, "Live")
-  - [ ] 6b ← next: Pico + nRF24 firmware reporting tx/rx/ACK/retries over USB; watch real traffic live
-    next to a simulation of the same setup (own nRF24 driver: RF24 is GPL)
-  - [ ] 6c: true HIL: firmware hands its frames to ksim over USB, ksim models the channel; real
+  - [x] 6b: Pico + nRF24 firmware (`firmware/`, own driver) reports tx/rx/ACK/retries over USB as
+    JSON lines; nodes get `"hardware": {"port"}`; live sessions run boards next to the simulation
+    (cyan on the map, "Real boards vs. simulation" in Results); `ksim ports`/`hello`,
+    `/api/ports`, `--virtual-boards N` (docs/hardware.md). Not yet: Python payloads on boards,
+    other stacks/boards
+  - [ ] 6c ← next: true HIL: firmware hands its frames to ksim over USB, ksim models the channel; real
     and virtual nodes in one network (µs collisions of nRF24 only approximate through USB; LoRa fine)
   - [ ] 6d: calibrate path loss, shadowing and the PA/LNA estimates from measurements
   - Later: firmware builds per board from the UI, many more board/module profiles

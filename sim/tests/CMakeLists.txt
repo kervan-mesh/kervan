@@ -13,6 +13,7 @@ add_executable(ksim_tests
     test_device.cpp
     test_engine.cpp
     test_esb.cpp
+    test_hardware.cpp
     test_kervan_stack.cpp
     test_live.cpp
     test_lora.cpp
@@ -27,7 +28,7 @@ add_executable(ksim_tests
 find_package(Threads REQUIRED)
 find_package(Python3 COMPONENTS Interpreter QUIET)
 
-target_link_libraries(ksim_tests PRIVATE ksim_core ksim_serve ksim_httplib ksim_stack_kervan ksim_stack_nrf24_esb
+target_link_libraries(ksim_tests PRIVATE ksim_core ksim_hw ksim_serve ksim_httplib kervan_fw_fake ksim_stack_kervan ksim_stack_nrf24_esb
     ksim_remote_client nlohmann_json::nlohmann_json GTest::gtest_main Threads::Threads
     kervan_warnings)
 target_compile_definitions(ksim_tests PRIVATE

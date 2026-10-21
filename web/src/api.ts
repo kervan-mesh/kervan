@@ -155,6 +155,7 @@ export interface RunResult {
   truncated: boolean;
   links: Link[];
   trace: TraceLine[];
+  hardware?: { node: number; port: string; board: string; id: string; fw: string; version: number }[];
 }
 
 export interface Catalog {
@@ -234,6 +235,23 @@ export const getWiring = (board: string, module?: string) =>
     `/api/wiring/${encodeURIComponent(board)}${module ? `/${encodeURIComponent(module)}` : ''}`,
   );
 
+// ---- real boards (docs/hardware.md) ----
+
+export interface BoardHello {
+  ev: 'hello';
+  fw: string;
+  version: number;
+  proto: number;
+  board: string;
+  id: string;
+  radio: string;
+}
+
+export const listPorts = () => request<{ ports: { port: string }[] }>('GET', '/api/ports');
+
+export const boardHello = (port: string) =>
+  request<{ hello: BoardHello }>('POST', '/api/ports/hello', JSON.stringify({ port }));
+
 // ---- live sessions (docs/web-ui.md, "Live") ----
 
 export interface LiveStatus {
@@ -241,6 +259,7 @@ export interface LiveStatus {
   t_us: number;
   duration_us: number;
   speed: number;
+  hardware?: boolean; // real boards take part: real time only
   total_lines: number;
   truncated: boolean;
   error?: string;

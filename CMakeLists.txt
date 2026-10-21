@@ -62,6 +62,7 @@ else()
 endif()
 
 add_subdirectory(core)
+add_subdirectory(firmware)
 
 if(KERVAN_BUILD_PORT_UDP)
     add_subdirectory(port/udp)

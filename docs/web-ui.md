@@ -1,6 +1,6 @@
 # ksim web UI
 
-Status: **phases 5, 5b, 5c and 6a.** Edit a scenario on a map, run it in ksim, and replay what happened:
+Status: **phases 5, 5b, 5c, 6a and 6b.** Edit a scenario on a map, run it in ksim, and replay what happened:
 frames, receptions, collisions, relays, the stacks' own events, and every frame's bytes and fields.
 
 ```sh
@@ -8,7 +8,8 @@ cd web && npm ci && npm run build   # once, and after UI changes (Node.js 20.19+
 build/sim/ksim serve                # then open http://127.0.0.1:8080
 ```
 
-`ksim serve [--port P] [--web DIR] [--scenarios DIR] [--hardware DIR] [--allow-processes]`
+`ksim serve [--port P] [--web DIR] [--scenarios DIR] [--hardware DIR] [--allow-processes]
+[--virtual-boards N]`
 
 - `--scenarios DIR`: scenarios the UI lists, opens and saves (default: `sim/scenarios` of the
   source tree).
@@ -16,6 +17,8 @@ build/sim/ksim serve                # then open http://127.0.0.1:8080
 - `--allow-processes`: let UI runs start out-of-process stacks (`"process": {"spawn": ...}`).
   Off by default because a scenario file can name any program. `"wait"` nodes need a terminal and
   only work with `ksim run`.
+- `--virtual-boards N`: N boards without hardware on ports `virtual:1`..`virtual:N`
+  ([hardware.md](hardware.md#using-boards)).
 
 ## How it works
 
@@ -34,6 +37,7 @@ node. Keys it does not know (such as `process`) are kept.
 | Scenario tab | Description, simulation settings, path loss model, the radio of nodes without a device, node list. |
 | Node tab | Position, device (board), stack, radio overrides and the stack's options — a form generated from the stack's [config schema](simulator.md#config-schema); an empty field means "default" and stays out of the file. After a run: the node's radio statistics, its stack events and end-of-run counters (`*_stats` events). |
 | Hardware (Node tab) | **Scenario radio**, a **Board**, or **MCU + module** picked from the [hardware catalog](simulator.md#hardware-catalog); shows the parts' key data (RAM, logic voltage, power levels, antenna/LNA, current) and the **wiring**: module pin → MCU pin, with warnings (5 V logic, too little current on the 3.3 V pin) and notes. |
+| Real board (Node tab, nRF24 nodes) | The serial port of a real board that runs this node too in live sessions; **Check** asks the board what it is. See [hardware.md](hardware.md). |
 | Payload (Node tab) | What the node sends: **Stack default** (the stack's own test data, `len` bytes), **Fixed bytes** (hex, e.g. `01 A2 FF`) or **Python** — a function `payload(node, seq, t)` returning `bytes`, with a seeded `rng` (⤢ opens a larger editor). Python needs `ksim serve --allow-processes`. Format: [simulator.md, Payloads](simulator.md#payloads). |
 | Packet tab | Click a `tx`, `rx` or `lost` line in the event list: the frame's sender, airtime, everyone who heard it (RSSI/SNR or why it was lost), its fields as the sending stack decodes them, and a hex dump. Hovering a field highlights its bytes. The map draws the frame's receptions on top. |
 | Results tab | Totals, duty cycle per node against the limit, radio losses per node, stack events per node, seed, trace hash and model versions. |
@@ -59,8 +63,10 @@ the past (the replay controls work there) and **Go live** to catch up. **Pause**
 the replay work as after **Run**.
 
 Without real hardware a live run is exactly the run **Run** makes (same trace hash), only paced.
-Phase 6b connects real boards to live sessions. One live session runs at a time; starting another
-stops it. `?live=SPEED` in the URL starts one when the page opens.
+With real boards on some nodes (**● Live + N boards**) the session runs in real time and the
+boards' sends and receptions appear in cyan next to the simulation, and Results compares them
+([hardware.md](hardware.md)). One live session runs at a time; starting another stops it.
+`?live=SPEED` in the URL starts one when the page opens.
 
 How it works: `ksim::Simulator` runs in steps (`start`, `advance_to`, `finish`; `run` is
 the three in a row). A `LiveSession` (`sim/src/serve/live.cpp`) owns a simulator and a thread
@@ -82,11 +88,13 @@ JSON over HTTP on 127.0.0.1. All POST and PUT bodies are scenario JSON.
 | `PUT /api/scenarios/NAME` | save (only valid scenarios; names: letters, digits, `_`, `-`) |
 | `POST /api/check` | validate; returns the links (`from`, `to`, `rssi`, `snr` for every decodable direction) |
 | `POST /api/run` | run; returns `summary`, `links`, `truncated` and `trace` (the trace lines as an array) |
+| `GET /api/ports` | `{"ports": [{"port": "COM5"}, ...]}`: serial ports (and virtual boards) |
+| `POST /api/ports/hello` | `{"port": "COM5"}` → `{"hello": {...}}`: what the board on that port is ([hardware.md](hardware.md#protocol)) |
 | `POST /api/live/start` | `{"scenario": {...}, "speed": 10}`: start a live session (same rules as `/api/run`); returns its status |
-| `GET /api/live/stream?from=N` | Server-Sent Events: `data: {state, t_us, duration_us, speed, total_lines, truncated, from, lines: [...]}` about 5 times a second and whenever lines arrive; ends after `done` or `error` |
-| `POST /api/live/control` | `{"action": "pause" \| "resume" \| "stop"}` or `{"action": "speed", "speed": 100}` |
+| `GET /api/live/stream?from=N` | Server-Sent Events: `data: {state, t_us, duration_us, speed, hardware, total_lines, truncated, from, lines: [...]}` about 5 times a second and whenever lines arrive; ends after `done` or `error` |
+| `POST /api/live/control` | `{"action": "pause" \| "resume" \| "stop"}` or `{"action": "speed", "speed": 100}`; with real boards only `stop` (409 otherwise) |
 | `GET /api/live/status` | the status without lines |
-| `GET /api/live/result` | after `done`: `summary`, `links`, `truncated` (409 while running) |
+| `GET /api/live/result` | after `done`: `summary`, `links`, `truncated`, `hardware` (the boards) (409 while running) |
 | `POST /api/decode` | `{"stack", "config", "data": hex}` → `{"fields": [{name, value, offset, len}]}` from the stack's `describe_frame`, or `null` |
 
 Errors come back as `{"error": "..."}` with status 400 (bad scenario, rejected config), 403, 404

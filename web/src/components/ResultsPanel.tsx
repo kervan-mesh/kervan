@@ -6,8 +6,10 @@
 // The outcome of a run: totals, per-node radio statistics with duty cycle, stack events per
 // node, and the model versions that produced it.
 
+import { Fragment } from 'react';
+
 import type { RunResult } from '../api';
-import { appCounts, type Replay } from '../model/replay';
+import { appCounts, hardwareComparison, type EsbCounts, type Replay } from '../model/replay';
 
 interface Props {
   result: RunResult;
@@ -20,6 +22,60 @@ const HIDDEN = new Set(['kv_stats', 'kv_log']);
 
 function pct(n: number, d: number): string {
   return d > 0 ? `${((100 * n) / d).toFixed(1)} %` : '–';
+}
+
+// Real boards next to the simulation of the same nodes.
+function BoardTable({ replay, selected, onSelect }: Omit<Props, 'result'>) {
+  const rows = hardwareComparison(replay);
+  if (rows.length === 0) {
+    return null;
+  }
+  const cells = (c: EsbCounts) => (
+    <>
+      <td>{c.sent}</td>
+      <td>{pct(c.acked, c.acked + c.failed)}</td>
+      <td>{c.acked + c.failed > 0 ? (c.retries / (c.acked + c.failed)).toFixed(2) : '–'}</td>
+      <td>{c.received}</td>
+    </>
+  );
+  return (
+    <>
+      <h3>Real boards vs. simulation</h3>
+      <table className="stats">
+        <thead>
+          <tr>
+            <th>node</th>
+            <th></th>
+            <th title="frames sent">sent</th>
+            <th title="acknowledged, of the frames that asked for an ACK">ACK</th>
+            <th title="retransmissions per frame">retr.</th>
+            <th title="frames received">recv</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <Fragment key={r.node}>
+              <tr className={r.node === selected ? 'selected' : undefined}
+                onClick={() => onSelect(r.node)} title={`${r.board.board} ${r.board.id} on ${r.board.port}`}>
+                <td rowSpan={2}>{r.node}</td>
+                <td className="hw">real</td>
+                {cells(r.real)}
+              </tr>
+              <tr className={r.node === selected ? 'selected' : undefined}
+                onClick={() => onSelect(r.node)}>
+                <td>sim</td>
+                {cells(r.sim)}
+              </tr>
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
+      <p className="hint">
+        Same nodes, same settings: differences come from the channel model (distance, walls,
+        antennas) and from the boards. Phase 6d calibrates the model with such measurements.
+      </p>
+    </>
+  );
 }
 
 function DutyBars({ result, selected, onSelect }: Omit<Props, 'replay'>) {
@@ -115,6 +171,8 @@ export function ResultsPanel({ result, replay, selected, onSelect }: Props) {
           </div>
         )}
       </div>
+
+      <BoardTable replay={replay} selected={selected} onSelect={onSelect} />
 
       <h3>Duty cycle per node</h3>
       <DutyBars result={result} selected={selected} onSelect={onSelect} />

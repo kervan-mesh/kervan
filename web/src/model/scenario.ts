@@ -35,6 +35,7 @@ export interface NodeDoc {
   config?: Record<string, ConfigValue>;
   radio?: Record<string, ConfigValue>;
   payload?: PayloadDoc;
+  hardware?: { port: string }; // a real board runs this node too, in live sessions
   [other: string]: unknown;
 }
 

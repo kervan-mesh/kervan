@@ -51,7 +51,8 @@ Going "live" means writing a port — the protocol code does not change.
 | 5b | Payloads (length, fixed bytes or a Python function per node) and a packet inspector in the UI ✅ |
 | 5c | Hardware catalog: pick an MCU and a radio module (or a board), with a wiring guide ✅ |
 | 6a | Live sessions: run a scenario in real time and watch it in the UI (pause, speed, stop) ✅ |
-| 6b–6d | Real boards (Raspberry Pi Pico + nRF24L01+) next to the simulation, then hardware-in-the-loop; channel model calibrated with real measurements |
+| 6b | Real boards (Raspberry Pi Pico + nRF24L01+) run nodes next to their simulation, compared live ✅ |
+| 6c–6d | Hardware-in-the-loop (real and virtual nodes in one network); channel model calibrated with real measurements |
 | 7 | ESP32 + LoRa port, more PHYs (BLE, 802.15.4, ESP-NOW), encryption, energy model, MQTT gateway (*Kervansaray*) |
 
 ## Building
@@ -114,10 +115,20 @@ Try `city_mesh` (42 nodes in a city district, and what managed flooding costs th
 `ksim serve --allow-processes`. See
 [docs/web-ui.md](docs/web-ui.md).
 
+### Try it: real boards
+
+A Raspberry Pi Pico with an nRF24L01+ module can run a scenario node for real, next to its
+simulation: flash `firmware/pico_nrf24` (Pico SDK, built in the dev container or by CI), wire the
+module as the UI shows, pick the board's serial port in the node's **Real board** section and
+press **● Live**. The boards' sends and receptions appear next to the simulated ones, and the
+results compare them. No boards at hand? `ksim serve --virtual-boards 2`. See
+[docs/hardware.md](docs/hardware.md).
+
 ### Dev container (recommended)
 
 The repository ships a ready-to-use environment in [`.devcontainer/`](.devcontainer/) with GCC, Clang,
-Ninja, CMake, the `arm-none-eabi` cross toolchain and Node.js — the same tools CI uses.
+Ninja, CMake, the `arm-none-eabi` cross toolchain, the Raspberry Pi Pico SDK and Node.js — the same
+tools CI uses.
 
 - **VS Code:** install the *Dev Containers* extension, open the folder, choose *Reopen in Container*.
 - **Plain Docker:**

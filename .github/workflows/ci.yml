@@ -77,9 +77,9 @@ jobs:
         shell: bash # implies pipefail, so `| tee` does not hide a failed threshold
         run: |
           mkdir -p coverage
-          gcovr -r . --filter core/ --filter port/ --filter sim/src/ --filter sim/stacks/ --filter sim/remote/ --exclude sim/src/main.cpp --exclude sim/remote/ksim_node.c build --txt-metric branch --html-details coverage/index.html \
+          gcovr -r . --filter core/ --filter port/ --filter sim/src/ --filter sim/stacks/ --filter sim/remote/ --filter firmware/common/ --exclude sim/src/main.cpp --exclude sim/remote/ksim_node.c build --txt-metric branch --html-details coverage/index.html \
             --fail-under-line 90 | tee -a "$GITHUB_STEP_SUMMARY"
-          gcovr -r . --filter core/ --filter port/ --filter sim/src/ --filter sim/stacks/ --filter sim/remote/ --exclude sim/src/main.cpp --exclude sim/remote/ksim_node.c build | tee -a "$GITHUB_STEP_SUMMARY"
+          gcovr -r . --filter core/ --filter port/ --filter sim/src/ --filter sim/stacks/ --filter sim/remote/ --filter firmware/common/ --exclude sim/src/main.cpp --exclude sim/remote/ksim_node.c build | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: coverage-html
@@ -102,7 +102,7 @@ jobs:
       - name: Run
         run: |
           mkdir -p crashes
-          for t in fuzz_frame fuzz_node; do
+          for t in fuzz_frame fuzz_node fuzz_fw_command; do
             ./build/fuzz/$t -max_total_time=60 -artifact_prefix=crashes/$t- -print_final_stats=1
           done
       - uses: actions/upload-artifact@v4
@@ -147,4 +147,30 @@ jobs:
             -DKERVAN_BUILD_TESTS=OFF \
             -DKERVAN_WARNINGS_AS_ERRORS=ON
           cmake --build build-arm
-          arm-none-eabi-size -t build-arm/core/libkervan_core.a
+          arm-none-eabi-size -t build-arm/core/libkervan_core.a build-arm/firmware/libkervan_fw.a
+
+  # Board firmware for ksim live sessions (docs/hardware.md); the .uf2 files are build artifacts.
+  firmware:
+    name: Pico firmware (Pico SDK)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi \
+            libstdc++-arm-none-eabi-newlib ninja-build
+      - name: Build for Pico and Pico W
+        run: |
+          mkdir -p uf2
+          for b in pico pico_w; do
+            cmake -S firmware/pico_nrf24 -B build-$b -G Ninja -DPICO_BOARD=$b \
+              -DFETCHCONTENT_BASE_DIR="$PWD/_deps"
+            cmake --build build-$b
+            arm-none-eabi-size build-$b/kervan_nrf24.elf
+            cp build-$b/kervan_nrf24.uf2 uf2/kervan_nrf24_$b.uf2
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-uf2
+          path: uf2/

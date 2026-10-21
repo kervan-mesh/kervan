@@ -18,6 +18,12 @@ kervan_add_test(test_frame)
 kervan_add_test(test_node)
 kervan_add_test(test_version)
 
+# Board firmware (firmware/common) against the nRF24 register model.
+foreach(t test_fw_app test_fw_json test_fw_nrf24)
+    kervan_add_test(${t})
+    target_link_libraries(${t} PRIVATE kervan_fw_fake)
+endforeach()
+
 if(KERVAN_BUILD_PORT_UDP)
     kervan_add_test(test_udp)
     target_link_libraries(test_udp PRIVATE kervan::port_udp)

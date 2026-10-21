@@ -8,3 +8,7 @@ endfunction()
 
 kervan_add_fuzzer(fuzz_frame)
 kervan_add_fuzzer(fuzz_node)
+
+# Board firmware command lines (firmware/common) on the nRF24 register model.
+kervan_add_fuzzer(fuzz_fw_command)
+target_link_libraries(fuzz_fw_command PRIVATE kervan_fw_fake)

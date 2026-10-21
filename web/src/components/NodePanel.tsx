@@ -20,6 +20,7 @@ import {
 } from '../model/scenario';
 import { PayloadEditor } from './PayloadEditor';
 import { HardwarePicker } from './HardwarePicker';
+import { RealBoard } from './RealBoard';
 import { KeyValueForm, SchemaForm } from './SchemaForm';
 
 interface Props {
@@ -177,6 +178,17 @@ export function NodePanel(props: Props) {
       </div>
       {node.process !== undefined && (
         <p className="hint">This node’s stack runs in its own process (“process” in the file).</p>
+      )}
+
+      {(radio.type === 'nrf24' || node.hardware !== undefined) && (
+        <>
+          <h3>Real board</h3>
+          <RealBoard
+            node={node}
+            usable={radio.type === 'nrf24' && node.stack === 'nrf24-esb' && node.process === undefined}
+            onChange={set}
+          />
+        </>
       )}
 
       <h3>Payload</h3>

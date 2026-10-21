@@ -40,6 +40,12 @@ struct PayloadSpec {
     std::string python;         // source defining payload(node, seq, t) -> bytes
 };
 
+// A real board that runs this node next to its simulation in live sessions
+// (docs/hardware.md). `ksim run` ignores it.
+struct HardwareSpec {
+    std::string port; // serial port: "COM5", "/dev/ttyACM0"
+};
+
 struct NodeSpec {
     uint32_t id = 0;
     Vec3 pos;
@@ -49,6 +55,7 @@ struct NodeSpec {
     std::string config;                  // "key=value;key=value", handed to the stack
     std::optional<ProcessSpec> process;  // set: the stack runs in its own process
     std::optional<PayloadSpec> payload;  // set: the host supplies payloads (app_payload)
+    std::optional<HardwareSpec> hardware; // set: a real board joins live sessions as this node
 };
 
 struct Scenario {

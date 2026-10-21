@@ -89,6 +89,17 @@ PayloadSpec parse_payload(const json &jp, const std::string &where)
     return p;
 }
 
+HardwareSpec parse_hardware(const json &jh, const std::string &where)
+{
+    check_object(jh, {"port"}, where);
+    HardwareSpec h;
+    h.port = get_string(jh, "port", "", where);
+    if (h.port.empty()) {
+        fail(where + ".port", "must name a serial port, e.g. \"COM5\" or \"/dev/ttyACM0\"");
+    }
+    return h;
+}
+
 Vec3 parse_pos(const json &j, const std::string &where)
 {
     if (!j.is_array() || j.size() < 2 || j.size() > 3) {
@@ -201,7 +212,7 @@ NodeSpec parse_node(const json &jn, const Scenario &s, const DeviceRegistry &dev
 {
     check_object(jn,
                  {"id", "pos", "device", "mcu", "module", "stack", "config", "radio", "process",
-                  "payload"},
+                  "payload", "hardware"},
                  where);
     if (!jn.contains("id") || !jn.contains("pos") || !jn.contains("stack")) {
         fail(where, "needs \"id\", \"pos\" and \"stack\"");
@@ -258,6 +269,9 @@ NodeSpec parse_node(const json &jn, const Scenario &s, const DeviceRegistry &dev
     if (jn.contains("payload")) {
         n.payload = parse_payload(jn.at("payload"), where + ".payload");
     }
+    if (jn.contains("hardware")) {
+        n.hardware = parse_hardware(jn.at("hardware"), where + ".hardware");
+    }
     return n;
 }
 
@@ -303,6 +317,11 @@ Scenario parse(const std::string &json_text, const DeviceRegistry &devices, cons
         for (const NodeSpec &other : s.nodes) {
             if (other.id == n.id) {
                 fail(where + ".id", "duplicate id " + std::to_string(n.id));
+            }
+            if (n.hardware && other.hardware && other.hardware->port == n.hardware->port) {
+                fail(where + ".hardware.port", "port " + n.hardware->port +
+                                                   " is already used by node " +
+                                                   std::to_string(other.id));
             }
         }
         s.nodes.push_back(std::move(n));

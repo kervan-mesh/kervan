@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 
 import type { Link } from '../api';
-import { between, txOverlapping, type Replay, type Rx, type Tx } from '../model/replay';
+import { between, txOverlapping, type HwEvent, type Replay, type Rx, type Tx } from '../model/replay';
 import { bounds, type ScenarioDoc } from '../model/scenario';
 
 export type Tool = 'select' | 'add';
@@ -75,6 +75,25 @@ const APP_LABELS: Record<string, string> = {
 };
 const HIDDEN_APP = new Set(['kv_stats', 'kv_log', 'kv_relay_cancel']); // too frequent for the map
 
+// Map label for a real board's report.
+function hwLabel(e: HwEvent): string {
+  switch (e.kind) {
+    case 'tx':
+      if (e.noAck) {
+        return 'real sent';
+      }
+      return e.ack ? `real ✓${e.retries ? ` (${e.retries} retr.)` : ''}` : 'real ✗ no ACK';
+    case 'rx':
+      return 'real rx';
+    case 'tx_busy':
+      return 'real ✗ busy';
+    case 'error':
+      return `board ✗ ${e.msg ?? ''}`.trim();
+    default:
+      return `real ${e.kind}`;
+  }
+}
+
 function colors(el: Element) {
   const s = getComputedStyle(el);
   const v = (name: string) => s.getPropertyValue(name).trim();
@@ -88,6 +107,7 @@ function colors(el: Element) {
     tx: v('--tx'),
     relay: v('--relay'),
     ok: v('--rx-ok'),
+    hw: v('--hw'),
     collision: v('--lost-collision'),
     half: v('--lost-half'),
     off: v('--lost-off'),
@@ -345,6 +365,55 @@ export function Field(props: Props) {
         }
       }
       ctx.globalAlpha = 1;
+
+      // real boards: a ring for every send, an arrow for every reception paired with its send
+      ctx.strokeStyle = c.hw;
+      ctx.fillStyle = c.hw;
+      for (const e of between(p.replay.hw, T - W, T)) {
+        const q = (T - e.t) / W;
+        const at = pos.get(e.node);
+        if (!at) {
+          continue;
+        }
+        ctx.globalAlpha = Math.max(0, 0.9 * (1 - q));
+        if (e.kind === 'tx') {
+          ctx.lineWidth = 2;
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath();
+          ctx.arc(at.x, at.y, NODE_R + 6 + q * 40, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        } else if (e.kind === 'rx' && e.peer !== undefined) {
+          const from = pos.get(e.peer);
+          if (!from) {
+            continue;
+          }
+          const dx = at.x - from.x;
+          const dy = at.y - from.y;
+          const len = Math.hypot(dx, dy);
+          if (len < 2 * NODE_R) {
+            continue;
+          }
+          const ux = dx / len;
+          const uy = dy / len;
+          const ox = -uy * 5; // beside the simulated arrow, not on it
+          const oy = ux * 5;
+          const ex = at.x - ux * (NODE_R + 3) + ox;
+          const ey = at.y - uy * (NODE_R + 3) + oy;
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(from.x + ux * (NODE_R + 2) + ox, from.y + uy * (NODE_R + 2) + oy);
+          ctx.lineTo(ex, ey);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(ex, ey);
+          ctx.lineTo(ex - ux * 9 - uy * 4.5, ey - uy * 9 + ux * 4.5);
+          ctx.lineTo(ex - ux * 9 + uy * 4.5, ey - uy * 9 - ux * 4.5);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
     }
 
     // the inspected frame: sender ring and a line to everyone who heard it
@@ -388,6 +457,11 @@ export function Field(props: Props) {
       ctx.beginPath();
       ctx.arc(at.x, at.y, NODE_R, 0, Math.PI * 2);
       ctx.fill();
+      if (n.hardware !== undefined) {
+        // a real board runs this node too
+        ctx.fillStyle = c.hw;
+        ctx.fillRect(at.x + NODE_R - 3, at.y - NODE_R - 3, 8, 8);
+      }
       ctx.fillStyle = c.nodeText;
       ctx.font = `${sel ? 600 : 500} 11px system-ui, sans-serif`;
       ctx.fillText(String(n.id), at.x, at.y + NODE_R + 13);
@@ -403,14 +477,20 @@ export function Field(props: Props) {
     if (p.replay) {
       const T = p.time;
       const W = 2 * p.window;
-      const perNode = new Map<number, { text: string; fade: number }[]>();
+      const perNode = new Map<number, { t: number; text: string; fade: number; hw?: boolean }[]>();
       for (const a of between(p.replay.apps, T - W, T)) {
         if (HIDDEN_APP.has(a.name)) {
           continue;
         }
         const list = perNode.get(a.node) ?? [];
-        list.push({ text: APP_LABELS[a.name] ?? a.name, fade: 1 - (T - a.t) / W });
+        list.push({ t: a.t, text: APP_LABELS[a.name] ?? a.name, fade: 1 - (T - a.t) / W });
         perNode.set(a.node, list);
+      }
+      for (const e of between(p.replay.hw, T - W, T)) {
+        const list = perNode.get(e.node) ?? [];
+        list.push({ t: e.t, text: hwLabel(e), fade: 1 - (T - e.t) / W, hw: true });
+        list.sort((x, y) => x.t - y.t);
+        perNode.set(e.node, list);
       }
       ctx.font = '600 11px system-ui, sans-serif';
       for (const [id, list] of perNode) {
@@ -422,9 +502,11 @@ export function Field(props: Props) {
           ctx.globalAlpha = Math.max(0, Math.min(1, item.fade * 1.5));
           ctx.fillStyle = item.text.includes('✗') || item.text.includes('drop')
             ? c.collision
-            : item.text === 'relay'
-              ? c.relay
-              : c.nodeText;
+            : item.hw
+              ? c.hw
+              : item.text === 'relay'
+                ? c.relay
+                : c.nodeText;
           ctx.fillText(item.text, at.x, at.y - NODE_R - 6 - (shown.length - 1 - i) * 13);
         });
       }

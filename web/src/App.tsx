@@ -100,6 +100,7 @@ interface Live {
 }
 
 const LIVE_SPEEDS = [1, 10, 100, 1000];
+const HW_LAG_US = 400_000;
 
 interface Run {
   result: RunResult;
@@ -367,9 +368,11 @@ export function App() {
       setTime(Math.min(status.t_us, status.duration_us));
       return;
     }
+    // board reports arrive a few hundred ms late (USB, sorting): show "now" that much behind
+    const lag = status.hardware ? HW_LAG_US : 0;
     let frame = requestAnimationFrame(function tick(now) {
       const ahead = Math.min((now - headAt) * 1000 * status.speed, 250_000 * status.speed);
-      setTime(Math.min(status.t_us + ahead, status.duration_us));
+      setTime(Math.max(0, Math.min(status.t_us + ahead, status.duration_us) - lag));
       frame = requestAnimationFrame(tick);
     });
     return () => cancelAnimationFrame(frame);
@@ -489,6 +492,7 @@ export function App() {
   const window_us = Math.max(viewSpeed * 250_000, 150_000); // how long an event stays on the map
   const liveActive =
     live !== null && (live.status.state === 'running' || live.status.state === 'paused');
+  const boards = doc.nodes.filter((n) => n.hardware !== undefined).length;
 
   const notes = useMemo(() => {
     const m = new Map<number, string>();
@@ -575,11 +579,15 @@ export function App() {
         </button>
         <button
           className="live-button"
-          onClick={() => void startLiveRun(doc, 10)}
+          onClick={() => void startLiveRun(doc, boards > 0 ? 1 : 10)}
           disabled={running || liveActive}
-          title="Run in real time (10x to start) and watch it as it happens"
+          title={
+            boards > 0
+              ? `Run in real time with ${boards} real board${boards > 1 ? 's' : ''} next to the simulation`
+              : 'Run in real time (10x to start) and watch it as it happens'
+          }
         >
-          ● Live
+          ● Live{boards > 0 ? ` + ${boards} board${boards > 1 ? 's' : ''}` : ''}
         </button>
         <button
           title="Theme: auto / light / dark"
@@ -673,6 +681,12 @@ export function App() {
                 <span><span className="swatch" style={{ background: 'var(--lost-half)' }} />half-duplex</span>
                 <span><span className="swatch" style={{ background: 'var(--lost-off)' }} />rx off</span>
               </>
+            )}
+            {(boards > 0 || (replay !== null && replay.boards.length > 0)) && (
+              <span title="Reports of real boards (docs/hardware.md); the small square marks their nodes">
+                <span className="swatch" style={{ background: 'var(--hw)' }} />
+                real board
+              </span>
             )}
           </div>
         </Field>

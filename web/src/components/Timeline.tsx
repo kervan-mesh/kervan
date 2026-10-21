@@ -16,6 +16,7 @@ import {
   lowerBound,
   nextEventTime,
   txOfReception,
+  type HwEvent,
   type Replay,
   type Tx,
 } from '../model/replay';
@@ -138,12 +139,19 @@ function recentEvents(r: Replay, time: number, node: number | null, limit: numbe
   let i = lowerBound(r.txs, time + 1) - 1;
   let j = lowerBound(r.rxs, time + 1) - 1;
   let k = lowerBound(r.apps, time + 1) - 1;
-  // merge the three sorted arrays backwards from the cursor
-  while (out.length < limit && (i >= 0 || j >= 0 || k >= 0)) {
+  let m = lowerBound(r.hw, time + 1) - 1;
+  // merge the four sorted arrays backwards from the cursor
+  while (out.length < limit && (i >= 0 || j >= 0 || k >= 0 || m >= 0)) {
     const ti = i >= 0 ? r.txs[i]!.t : -1;
     const tj = j >= 0 ? r.rxs[j]!.t : -1;
     const tk = k >= 0 ? r.apps[k]!.t : -1;
-    if (tk >= ti && tk >= tj) {
+    const tm = m >= 0 ? r.hw[m]!.t : -1;
+    if (tm >= ti && tm >= tj && tm >= tk) {
+      const e = r.hw[m--]!;
+      if (involves(e.node, ...(e.peer !== undefined ? [e.peer] : []))) {
+        out.push(hwLine(e));
+      }
+    } else if (tk >= ti && tk >= tj) {
       const a = r.apps[k--]!;
       if (involves(a.node)) {
         const bad =
@@ -172,6 +180,27 @@ function recentEvents(r: Replay, time: number, node: number | null, limit: numbe
   return out;
 }
 
+// A real board's report in the event list.
+function hwLine(e: HwEvent): LogLine {
+  const line = { t: e.t, node: e.node, cls: 'hw' };
+  switch (e.kind) {
+    case 'tx': {
+      const to = e.peer !== undefined ? `, received by ${e.peer}` : '';
+      const retries = e.retries ? `, ${e.retries} retransmission${e.retries > 1 ? 's' : ''}` : '';
+      const what = e.noAck ? 'sent (no ACK asked)' : e.ack ? 'ACK' : 'no ACK';
+      return { ...line, cls: e.ack || e.noAck ? 'hw' : 'bad', text: `real tx ${e.data.length / 2} B: ${what}${retries}${to}` };
+    }
+    case 'rx':
+      return { ...line, text: `real rx ${e.data.length / 2} B${e.peer !== undefined ? ` from ${e.peer}` : ''}, pipe ${e.pipe ?? '?'}${e.rpd ? ', above -64 dBm' : ''}` };
+    case 'error':
+      return { ...line, cls: 'bad', text: `board: ${e.msg ?? 'error'}` };
+    case 'tx_busy':
+      return { ...line, cls: 'bad', text: 'real tx skipped: still sending the last frame' };
+    default:
+      return { ...line, text: `real ${e.kind}` };
+  }
+}
+
 export function Timeline(props: Props) {
   const { replay, time, live } = props;
   const following = live !== undefined && live.follow;
@@ -196,7 +225,7 @@ export function Timeline(props: Props) {
                 ● Go live
               </button>
             )}
-            {live.status.state === 'paused' ? (
+            {live.status.hardware ? null : live.status.state === 'paused' ? (
               <button onClick={live.onResume}>▶ Resume</button>
             ) : (
               <button onClick={live.onPause} disabled={live.status.state !== 'running'}>
@@ -206,16 +235,24 @@ export function Timeline(props: Props) {
             <button onClick={live.onStop} disabled={live.status.state === 'done'} title="End the session now">
               ■ Stop
             </button>
-            <label className="hint" htmlFor="live-speed">real time ×</label>
-            <select
-              id="live-speed"
-              value={live.status.speed}
-              onChange={(e) => live.onSpeed(Number(e.target.value))}
-            >
-              {(live.speeds.includes(live.status.speed) ? live.speeds : [...live.speeds, live.status.speed]).map((v) => (
-                <option key={v} value={v}>{v}</option>
-              ))}
-            </select>
+            {live.status.hardware ? (
+              <span className="hint" title="Real boards run in real time: no pause, no other speed">
+                real boards · real time
+              </span>
+            ) : (
+              <>
+                <label className="hint" htmlFor="live-speed">real time ×</label>
+                <select
+                  id="live-speed"
+                  value={live.status.speed}
+                  onChange={(e) => live.onSpeed(Number(e.target.value))}
+                >
+                  {(live.speeds.includes(live.status.speed) ? live.speeds : [...live.speeds, live.status.speed]).map((v) => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                </select>
+              </>
+            )}
             <span className="hint">
               {live.status.state === 'paused' ? 'paused at ' : 'now '}
               {formatTime(live.status.t_us)}

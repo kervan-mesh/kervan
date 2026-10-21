@@ -25,6 +25,7 @@
   --tx: #e8a317;
   --relay: #8250df;
   --rx-ok: #1a7f37;
+  --hw: #0a8ea8;
   --lost-collision: #cf222e;
   --lost-half: #e16f24;
   --lost-off: #8a94a3;
@@ -56,6 +57,8 @@
     --tx: #f0b72f;
     --relay: #a371f7;
     --rx-ok: #3fb950;
+  --hw: #39c5e0;
+    --hw: #39c5e0;
     --lost-collision: #f85149;
     --lost-half: #f0883e;
     --lost-off: #6e7681;
@@ -556,6 +559,11 @@ table.stats tbody tr {
 
 .events .tx {
   color: var(--tx);
+}
+
+.events .hw,
+.stats .hw {
+  color: var(--hw);
 }
 
 .empty {

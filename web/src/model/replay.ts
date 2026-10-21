@@ -37,19 +37,49 @@ export interface AppEvent {
   detail: string;
 }
 
+// A report from a real board running a node (docs/hardware.md): "tx", "rx", "tx_busy", "error".
+export interface HwEvent {
+  t: number;
+  node: number;
+  kind: string;
+  data: string; // payload, hex
+  ack?: boolean; // tx: acknowledged
+  noAck?: boolean; // tx: sent without asking for an ACK
+  retries?: number; // tx: retransmissions
+  ackData?: string; // tx: payload of the ACK
+  pipe?: number; // rx
+  rpd?: boolean; // rx: received power above -64 dBm
+  msg?: string; // error
+  peer?: number; // tx: a board that received it; rx: the board that sent it
+}
+
+export interface HwBoard {
+  node: number;
+  port: string;
+  board: string;
+  id: string;
+  fw: string;
+  version: number;
+}
+
 export interface Replay {
   duration: number; // µs
   txs: Tx[];
   rxs: Rx[];
   apps: AppEvent[];
+  hw: HwEvent[]; // real boards, in time order
+  boards: HwBoard[];
   maxAirtime: number;
   meta: Record<string, unknown>;
 }
 
+// A board's reception and the board's send it belongs to: same payload, this close in time.
+const HW_MATCH_US = 50_000;
+
 const RELAY_EVENTS = new Set(['kv_relay']);
 
 export function emptyReplay(duration: number): Replay {
-  return { duration, txs: [], rxs: [], apps: [], maxAirtime: 0, meta: {} };
+  return { duration, txs: [], rxs: [], apps: [], hw: [], boards: [], maxAirtime: 0, meta: {} };
 }
 
 // Add trace lines (in time order, after those already in r) to r. Live sessions call this for
@@ -100,10 +130,63 @@ export function appendTrace(r: Replay, trace: TraceLine[]): void {
         }
         break;
       }
+      case 'hw':
+        addHw(r, line, node);
+        break;
       default:
         break; // newer trace events are ignored, not fatal
     }
   }
+}
+
+function addHw(r: Replay, line: TraceLine, node: number): void {
+  const kind = String(line.kind);
+  if (kind === 'hello') {
+    r.boards.push({
+      node,
+      port: String(line.port ?? ''),
+      board: String(line.board ?? ''),
+      id: String(line.id ?? ''),
+      fw: String(line.fw ?? ''),
+      version: Number(line.version ?? 0),
+    });
+    return;
+  }
+  const e: HwEvent = { t: line.t, node, kind, data: typeof line.data === 'string' ? line.data : '' };
+  if (typeof line.ack === 'boolean') {
+    e.ack = line.ack;
+  }
+  if (line.no_ack === true) {
+    e.noAck = true;
+  }
+  if (typeof line.retries === 'number') {
+    e.retries = line.retries;
+  }
+  if (typeof line.ack_data === 'string') {
+    e.ackData = line.ack_data;
+  }
+  if (typeof line.pipe === 'number') {
+    e.pipe = line.pipe;
+  }
+  if (typeof line.rpd === 'boolean') {
+    e.rpd = line.rpd;
+  }
+  if (typeof line.msg === 'string') {
+    e.msg = line.msg;
+  }
+  // pair a send with the reception of the same payload on another board (either may come first)
+  const other = kind === 'tx' ? 'rx' : kind === 'rx' ? 'tx' : null;
+  if (other) {
+    for (let i = r.hw.length - 1; i >= 0 && r.hw[i]!.t >= e.t - HW_MATCH_US; i--) {
+      const h = r.hw[i]!;
+      if (h.kind === other && h.peer === undefined && h.node !== node && h.data === e.data) {
+        h.peer = node;
+        e.peer = h.node;
+        break;
+      }
+    }
+  }
+  r.hw.push(e);
 }
 
 export function buildReplay(trace: TraceLine[], duration: number): Replay {
@@ -271,4 +354,63 @@ export function txOfReception(r: Replay, rx: Rx): Tx | undefined {
 // Everyone who heard a frame, and how it went.
 export function receptionsOf(r: Replay, tx: Tx): Rx[] {
   return between(r.rxs, tx.end, tx.end).filter((rx) => rx.from === tx.node);
+}
+
+// Real boards against the simulation of the same nodes (ESB counters: docs/hardware.md).
+export interface HwComparison {
+  node: number;
+  board: HwBoard;
+  real: EsbCounts;
+  sim: EsbCounts;
+}
+
+export interface EsbCounts {
+  sent: number;
+  acked: number; // acknowledged (sends without ACK request not counted)
+  failed: number; // no ACK after every retransmission
+  retries: number;
+  received: number;
+}
+
+export function hardwareComparison(r: Replay): HwComparison[] {
+  const empty = (): EsbCounts => ({ sent: 0, acked: 0, failed: 0, retries: 0, received: 0 });
+  const out = new Map<number, HwComparison>();
+  for (const b of r.boards) {
+    out.set(b.node, { node: b.node, board: b, real: empty(), sim: empty() });
+  }
+  for (const e of r.hw) {
+    const c = out.get(e.node)?.real;
+    if (!c) {
+      continue;
+    }
+    if (e.kind === 'tx') {
+      c.sent++;
+      c.retries += e.retries ?? 0;
+      if (e.ack) {
+        c.acked++;
+      } else if (!e.noAck) {
+        c.failed++;
+      }
+    } else if (e.kind === 'rx') {
+      c.received++;
+    }
+  }
+  for (const a of r.apps) {
+    const c = out.get(a.node)?.sim;
+    if (!c) {
+      continue;
+    }
+    if (a.name === 'esb_tx') {
+      c.sent++;
+    } else if (a.name === 'esb_tx_ds' && !a.detail.includes('no_ack')) {
+      c.acked++;
+    } else if (a.name === 'esb_max_rt') {
+      c.failed++;
+    } else if (a.name === 'esb_retx') {
+      c.retries++;
+    } else if (a.name === 'esb_rx') {
+      c.received++;
+    }
+  }
+  return [...out.values()];
 }

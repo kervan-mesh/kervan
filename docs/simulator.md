@@ -295,6 +295,12 @@ what it sends instead:
 Every `tx` line of the trace carries the frame bytes (`data`), and stacks may decode frames for
 packet inspectors (`ksim_stack_t::describe_frame`, helper `ksim/frame_fields.h`).
 
+## Real boards
+
+`"hardware": { "port": "COM5" }` on a node: a real board on that serial port runs the node too,
+next to its simulation, in live sessions (`ksim serve`, **● Live**). `ksim run` ignores it. Two
+nodes cannot share a port. Boards, firmware, wiring and protocol: [hardware.md](hardware.md).
+
 ## Trace format
 
 JSON Lines, one event per line. The first line records the versions of everything that produced
@@ -309,6 +315,9 @@ the run:
 ```
 
 Loss reasons: `collision`, `half_duplex`, `rx_off`.
+Live sessions with real boards add `"ev":"hw"` lines (the boards' reports, `kind` `hello`, `tx`,
+`rx`, `tx_busy`, `error`; [hardware.md](hardware.md#protocol)); they are not part of the trace
+hash.
 `format` is the trace format version: 2 adds `data` (frame bytes, hex) to `tx`; traces without it
 are format 1.
 

@@ -14,6 +14,7 @@ import {
   buildReplay,
   emptyReplay,
   formatTime,
+  hardwareComparison,
   lowerBound,
   nextEventTime,
   parseDetail,
@@ -105,5 +106,61 @@ describe('formatTime', () => {
     expect(formatTime(0)).toBe('00:00.000');
     expect(formatTime(61_234_000)).toBe('01:01.234');
     expect(formatTime(3_600_000_000 + 5_000)).toBe('1:00:00.005');
+  });
+});
+
+describe('real boards', () => {
+  // two boards (docs/hardware.md): node 2 sends, node 1 receives; the simulation runs alongside
+  const hwTrace: TraceLine[] = [
+    { t: 0, ev: 'hw', node: 1, kind: 'hello', port: 'COM5', board: 'rpi-pico', id: 'E660', fw: 'kervan-nrf24', version: 1 },
+    { t: 0, ev: 'hw', node: 2, kind: 'hello', port: 'COM6', board: 'rpi-pico', id: 'E661', fw: 'kervan-nrf24', version: 1 },
+    { t: 1000, ev: 'app', node: 2, name: 'esb_tx', detail: 'to=0xe7 pid=1 len=2' },
+    { t: 1500, ev: 'app', node: 2, name: 'esb_tx_ds', detail: 'pid=1' },
+    { t: 1600, ev: 'app', node: 1, name: 'esb_rx', detail: 'pipe=1 pid=1 len=2' },
+    { t: 2000, ev: 'hw', node: 2, kind: 'tx', seq: 0, data: '0A0B', ack: true, retries: 1, ack_data: 'A0' },
+    { t: 2400, ev: 'hw', node: 1, kind: 'rx', pipe: 1, data: '0A0B', rpd: true },
+    // the receiver's clock is a little behind: its report comes first
+    { t: 90000, ev: 'hw', node: 1, kind: 'rx', pipe: 1, data: '0C0D', rpd: false },
+    { t: 90300, ev: 'hw', node: 2, kind: 'tx', seq: 1, data: '0C0D', ack: true, retries: 0 },
+    { t: 200000, ev: 'hw', node: 2, kind: 'tx', seq: 2, data: '0E0F', ack: false, retries: 3 },
+    { t: 300000, ev: 'hw', node: 2, kind: 'tx', seq: 3, data: '0E0F', ack: false, no_ack: true, retries: 0 },
+    { t: 300500, ev: 'app', node: 2, name: 'esb_max_rt', detail: 'pid=2' },
+    { t: 400000, ev: 'hw', node: 2, kind: 'error', msg: 'disconnected' },
+  ];
+
+  it('keeps boards and their reports', () => {
+    const r = buildReplay(hwTrace, 1e6);
+    expect(r.boards.map((b) => b.node + '@' + b.port)).toEqual(['1@COM5', '2@COM6']);
+    expect(r.hw.map((e) => e.kind)).toEqual(['tx', 'rx', 'rx', 'tx', 'tx', 'tx', 'error']);
+    expect(r.hw[0]).toMatchObject({ node: 2, data: '0A0B', ack: true, retries: 1, ackData: 'A0', peer: 1 });
+    expect(r.hw[1]).toMatchObject({ node: 1, pipe: 1, rpd: true, peer: 2 });
+    expect(r.hw[2]!.peer).toBe(2); // matched although it came first
+    expect(r.hw[3]!.peer).toBe(1);
+    expect(r.hw[4]!.peer).toBeUndefined(); // nobody received it
+    expect(r.hw[5]).toMatchObject({ noAck: true, ack: false });
+    expect(r.hw[6]!.msg).toBe('disconnected');
+    expect(r.txs).toEqual([]); // reports are not simulated frames
+  });
+
+  it('pairs a reception only once and only with another board', () => {
+    const r = emptyReplay(1e6);
+    appendTrace(r, [
+      { t: 1000, ev: 'hw', node: 2, kind: 'tx', data: '01', ack: true, retries: 0 },
+      { t: 1100, ev: 'hw', node: 1, kind: 'rx', data: '01' },
+      { t: 1200, ev: 'hw', node: 3, kind: 'rx', data: '01' },
+      { t: 1300, ev: 'hw', node: 2, kind: 'rx', data: '01' },
+      { t: 99000, ev: 'hw', node: 4, kind: 'rx', data: '01' },
+    ]);
+    expect(r.hw.map((e) => e.peer)).toEqual([1, 2, undefined, undefined, undefined]);
+  });
+
+  it('compares the boards with the simulation', () => {
+    const c = hardwareComparison(buildReplay(hwTrace, 1e6));
+    expect(c.map((x) => x.node)).toEqual([1, 2]);
+    expect(c[1]!.real).toEqual({ sent: 4, acked: 2, failed: 1, retries: 4, received: 0 });
+    expect(c[1]!.sim).toEqual({ sent: 1, acked: 1, failed: 1, retries: 0, received: 0 });
+    expect(c[0]!.real.received).toBe(2);
+    expect(c[0]!.sim.received).toBe(1);
+    expect(hardwareComparison(buildReplay(trace, 1e6))).toEqual([]);
   });
 });

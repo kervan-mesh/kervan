@@ -9,6 +9,7 @@
 #pragma once
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -29,6 +30,9 @@ struct Options {
     std::string program_dir;            // where ksim-node is looked up for out-of-process nodes
     bool allow_processes = false;       // let UI runs spawn out-of-process stacks
     size_t max_trace_bytes = 256u << 20; // longer traces are cut (the summary stays complete)
+    // Real boards (docs/hardware.md); empty: serial ports. Tests put simulated boards here.
+    std::function<std::unique_ptr<hw::LineIo>(const std::string &port)> open_port;
+    std::function<std::vector<std::string>()> list_ports;
 };
 
 struct Request {
@@ -67,6 +71,8 @@ private:
     Response run(const std::string &body) const;
     Response decode(const std::string &body) const;
     Response wiring(const std::string &path) const;
+    Response ports(const std::string &action, const std::string &method,
+                   const std::string &body) const;
     Response live(const std::string &method, const std::string &action,
                   const std::string &body) const;
     std::optional<Response> prepare(const std::string &body, Scenario &scn) const;

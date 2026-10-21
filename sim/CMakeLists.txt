@@ -100,16 +100,23 @@ add_executable(ksim-node remote/ksim_node.c)
 target_link_libraries(ksim-node PRIVATE ksim_remote_client ksim_stack_kervan ksim_stack_nrf24_esb
     kervan_warnings)
 
+# Real boards over serial ports (docs/hardware.md), for live sessions.
+# Virtual boards run the board firmware's logic (firmware/) on modelled chips.
+add_library(ksim_hw src/hw/board.cpp src/hw/serial.cpp src/hw/virtual_board.cpp)
+target_include_directories(ksim_hw PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/hw)
+target_link_libraries(ksim_hw PUBLIC ksim_core PRIVATE kervan_fw_fake nlohmann_json::nlohmann_json
+    kervan_warnings)
+
 # `ksim serve`: HTTP API for the web UI (web/). Not part of ksim_core: the simulator needs no network.
 add_library(ksim_serve src/serve/api.cpp src/serve/http.cpp src/serve/live.cpp)
 target_include_directories(ksim_serve PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/serve)
-target_link_libraries(ksim_serve PUBLIC ksim_core PRIVATE ksim_httplib nlohmann_json::nlohmann_json
-    kervan_warnings)
+target_link_libraries(ksim_serve PUBLIC ksim_core ksim_hw PRIVATE ksim_httplib
+    nlohmann_json::nlohmann_json kervan_warnings)
 find_package(Threads REQUIRED)
 target_link_libraries(ksim_serve PRIVATE Threads::Threads)
 
 add_executable(ksim src/main.cpp)
-target_link_libraries(ksim PRIVATE ksim_core ksim_serve ksim_stack_kervan ksim_stack_nrf24_esb
+target_link_libraries(ksim PRIVATE ksim_core ksim_hw ksim_serve ksim_stack_kervan ksim_stack_nrf24_esb
     kervan_warnings)
 # Defaults for `ksim serve` when run from a build tree; --web and --scenarios override them.
 target_compile_definitions(ksim PRIVATE
