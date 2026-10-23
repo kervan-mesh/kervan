@@ -1,6 +1,6 @@
 # ksim web UI
 
-Status: **phases 5, 5b, 5c, 6a and 6b.** Edit a scenario on a map, run it in ksim, and replay what happened:
+Status: **phases 5, 5b, 5c, 6a, 6b and 6e.** Edit a scenario on a map, run it in ksim, and replay what happened:
 frames, receptions, collisions, relays, the stacks' own events, and every frame's bytes and fields.
 
 ```sh

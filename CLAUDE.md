@@ -164,7 +164,8 @@ every push/PR.
   use a board or MCU + module; antenna gain and LNA in the channel; wiring guide (`ksim wiring`,
   `/api/wiring`, UI) with supply/logic/current warnings. The user owns 2 Picos, nRF24L01+ and
   nRF24L01+ PA/LNA modules (`pico_nrf24` scenario). PA/LNA numbers are estimates until measured.
-- [ ] Phase 6 — live and hardware-in-the-loop (agreed order, user's Picos + nRF24 first; C, Pico SDK):
+- [ ] Phase 6 — live and hardware-in-the-loop (agreed order, user's Picos + nRF24 first; C, Pico SDK
+  for the Pico, Zephyr for nRF/STM32/ESP32):
   - [x] 6a: live sessions — `Simulator::start/advance_to/finish`, `LiveSession` paces it on a
     thread (speed × wall clock), SSE `/api/live/stream`, UI ● Live with follow/pause/speed/stop;
     without hardware the same trace hash as `ksim run` (docs/web-ui.md, "Live")
@@ -173,22 +174,30 @@ every push/PR.
     (cyan on the map, "Real boards vs. simulation" in Results); `ksim ports`/`hello`,
     `/api/ports`, `--virtual-boards N` (docs/hardware.md). Not yet: Python payloads on boards,
     other stacks/boards
-  - [x] 6e (done before 6c, at the user's request): wiring designer + firmware builds — catalog
-    MCUs/modules carry pin `header`s (+ MCU `spi`, `firmware`), nodes may choose `"pins"`
-    (checked in `DeviceRegistry::wiring`), SVG drawing in the UI (`WiringDesigner`), firmware for
-    those pins built in Docker by `ksim serve` (`hw::FirmwareBuilder`, `/api/firmware/*`,
-    `ksim firmware`), open folder, flash to a Pico in BOOTSEL; boards report their `wiring`
-    Catalog now has 18 MCU boards with headers (Pico family, ESP32 kits incl. the user's DevKit
-    V1, Blue Pill, the user's Nucleo-F401RE, nRF52/52840/5340/7002 DKs;
-    header strips with gaps, labels, numbering), the user's Ebyte E32-900M30S and an E22-900M22S; pinouts from
-    vendor docs / Zephyr board files, noted per file. The user's E18-MS1PA2 (CC2530 Zigbee) waits
-    for an 802.15.4 PHY. Firmware builds with Zephyr for the nRF DKs, Nucleo-F401RE and ESP32 kits
-    (`.hex`/`.bin`, flashed by copying onto the J-Link/ST-LINK drive or with esptool); Arduino
-    boards removed from the catalog at the user's request
-  - [ ] 6c ← next: true HIL: firmware hands its frames to ksim over USB, ksim models the channel; real
+  - [x] 6e (done before 6c, at the user's request): wiring designer + firmware builds.
+    - Catalog: 13 MCU boards with pin headers (Pico, Pico W, Pico 2; ESP32 DevKit V1 (the user's),
+      DevKitC V4, S3-DevKitC-1, C3-DevKitM-1; Blue Pill; Nucleo-F401RE (the user's); nRF52,
+      nRF52840 (the user's), nRF5340, nRF7002 (the user's) DKs) as header strips with gaps,
+      labels, numbering, `io`/`input_only`, SPI controllers; the bare `esp32`/`esp32-s3` chips
+      only serve integrated boards. Modules: nRF24L01+ (+PA/LNA), SX1276 (RFM95W pads), SX1262
+      (signal list), Ebyte E32-900M30S (the user's), Ebyte E22-900M22S. Pinouts from vendor docs /
+      Zephyr board files, named in each file's notes. Arduino removed at the user's request; the
+      user's E18-MS1PA2 (CC2530 Zigbee) waits for an 802.15.4 PHY.
+    - Nodes may choose `"pins"` (checked in `DeviceRegistry::wiring`; dropped when parts change);
+      SVG drawing + pin choice in the UI (`WiringDesigner`, `web/src/model/wiring.ts`); a test
+      wires all 78 board/module pairs.
+    - Firmware for those pins built in Docker by `ksim serve` (`hw::FirmwareBuilder`,
+      `/api/firmware/*`, `ksim firmware [--overlay]`) into `build/fw/`: Pico SDK (`.uf2`) or
+      Zephyr (`.hex`/`.bin`, overlay from `FirmwareSpec::overlay()`); flash by copying onto the
+      board's drive (RPI-RP2, ST-LINK, J-Link) or with esptool (ESP32); boards report `wiring`.
+    - Verified: builds for all 13-1 firmware boards in Docker, UI build flow; NOT yet on real
+      boards, NOT yet in CI (Zephyr builds), LoRa firmware not written (phase 7)
+  - Where we are (2026-10-23): next the user tests real boards (Pico/Nucleo/nRF52840 DK/ESP32
+    DevKit V1 with nRF24), then Zephyr builds in CI, then 6c
+  - [ ] 6c ← next after the real-board test: true HIL: firmware hands its frames to ksim over USB, ksim models the channel; real
     and virtual nodes in one network (µs collisions of nRF24 only approximate through USB; LoRa fine)
   - [ ] 6d: calibrate path loss, shadowing and the PA/LNA estimates from measurements
-  - Later: firmware builds per board from the UI, many more board/module profiles
+  - Later: drawings for integrated boards (TTGO LoRa32, Heltec V3), Python payloads on boards
 - [ ] Phase 7 — ESP32 + LoRa port, more PHYs, encryption (AES-CCM), energy model, MQTT gateway
 
 Update this checklist when a phase completes. Record significant design decisions in `docs/`.

@@ -2,8 +2,8 @@
 
 **Lightweight, transport-agnostic messaging for embedded wireless networks — with a built-in simulator so you can build and test without hardware.**
 
-> ⚠️ **Status: early development.** The protocol core, the simulator and its web UI work; real-hardware
-> support is in progress. APIs and the wire format will still change.
+> ⚠️ **Status: early development.** The protocol core, the simulator and its web UI work; firmware for
+> real boards builds (Pico, nRF DKs, Nucleo, ESP32) but has not been tested on hardware yet. APIs and the wire format will still change.
 
 Messages travel node to node like a caravan along the Silk Road: hopping across a mesh, resting at
 *kervansaray* gateways, and eventually reaching the wider world (MQTT, the web, your dashboards).
@@ -52,6 +52,7 @@ Going "live" means writing a port — the protocol code does not change.
 | 5c | Hardware catalog: pick an MCU and a radio module (or a board), with a wiring guide ✅ |
 | 6a | Live sessions: run a scenario in real time and watch it in the UI (pause, speed, stop) ✅ |
 | 6b | Real boards (Raspberry Pi Pico + nRF24L01+) run nodes next to their simulation, compared live ✅ |
+| 6e | Wiring designer (boards and modules drawn from the catalog, pins chosen by clicking) and firmware builds for Pico, nRF DKs, Nucleo and ESP32 kits (Pico SDK / Zephyr, in Docker), flashed from the UI ✅ |
 | 6c–6d | Hardware-in-the-loop (real and virtual nodes in one network); channel model calibrated with real measurements |
 | 7 | ESP32 + LoRa port, more PHYs (BLE, 802.15.4, ESP-NOW), encryption, energy model, MQTT gateway (*Kervansaray*) |
 

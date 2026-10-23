@@ -1,7 +1,8 @@
 # Real boards in live sessions
 
-Status: **phase 6b.** A scenario node can also run on a real board: a Raspberry Pi Pico (or Pico
-W) with an nRF24L01+ module. During a **● Live** session the board does what the simulated node
+Status: **phases 6b and 6e**, not yet tested on real boards. A scenario node can also run on a
+real board with an nRF24L01+ module: a Raspberry Pi Pico (Pico SDK) or a Nordic DK, STM32 Nucleo
+or ESP32 dev kit (Zephyr). During a **● Live** session the board does what the simulated node
 does — same channel, data rate, power step, addresses, retries, payload — and reports every send
 and reception over USB. ksim puts these reports into the trace next to the simulation, so you
 watch the real radio and the model side by side and compare them afterwards.
