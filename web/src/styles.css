@@ -610,6 +610,7 @@ table.stats tbody tr {
 /* ---- payload editor, packet inspector ---- */
 
 .segmented {
+  position: relative; /* keeps the hidden radio inputs inside the scrolling panel */
   display: flex;
   border: 1px solid var(--border);
   border-radius: 4px;
