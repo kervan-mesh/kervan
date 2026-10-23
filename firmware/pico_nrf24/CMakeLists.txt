@@ -5,6 +5,9 @@
 #   cmake -S firmware/pico_nrf24 -B build-pico-w -DPICO_BOARD=pico_w  # Pico W
 #   cmake --build build-pico     # -> build-pico/kervan_nrf24.uf2
 #
+# Pins (GPIO numbers) are options, as `ksim firmware` and the web UI set them:
+#   -DKFW_SPI=0 -DKFW_PIN_SCK=18 -DKFW_PIN_MOSI=19 -DKFW_PIN_MISO=16 -DKFW_PIN_CSN=17 -DKFW_PIN_CE=20
+#
 # Uses PICO_SDK_PATH (environment or -D) if set, else downloads the SDK.
 cmake_minimum_required(VERSION 3.13...3.31)
 
@@ -35,6 +38,13 @@ project(kervan_pico_nrf24 C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 pico_sdk_init()
 
+set(KFW_SPI 0 CACHE STRING "SPI controller of the nRF24 (0 or 1)")
+set(KFW_PIN_SCK 18 CACHE STRING "GPIO for SCK")
+set(KFW_PIN_MOSI 19 CACHE STRING "GPIO for MOSI")
+set(KFW_PIN_MISO 16 CACHE STRING "GPIO for MISO")
+set(KFW_PIN_CSN 17 CACHE STRING "GPIO for CSN")
+set(KFW_PIN_CE 20 CACHE STRING "GPIO for CE")
+
 set(KFW_COMMON ${CMAKE_CURRENT_LIST_DIR}/../common)
 set(KFW_SOURCES
     main.c
@@ -45,6 +55,9 @@ set(KFW_SOURCES
 add_executable(kervan_nrf24 ${KFW_SOURCES})
 target_include_directories(kervan_nrf24 PRIVATE ${KFW_COMMON}/include)
 target_link_libraries(kervan_nrf24 PRIVATE pico_stdlib pico_unique_id hardware_spi)
+target_compile_definitions(kervan_nrf24 PRIVATE
+    KFW_SPI=${KFW_SPI} KFW_PIN_SCK=${KFW_PIN_SCK} KFW_PIN_MOSI=${KFW_PIN_MOSI}
+    KFW_PIN_MISO=${KFW_PIN_MISO} KFW_PIN_CSN=${KFW_PIN_CSN} KFW_PIN_CE=${KFW_PIN_CE})
 if(PICO_CYW43_SUPPORTED)
     target_link_libraries(kervan_nrf24 PRIVATE pico_cyw43_arch_none) # the LED is on the Wi-Fi chip
     target_compile_definitions(kervan_nrf24 PRIVATE KFW_PICO_W=1)

@@ -18,5 +18,15 @@
     "spi_cs": "GP17 / SPI0 CSn (pin 22)"
   },
   "gpio": ["GP20 (pin 26)", "GP21 (pin 27)", "GP22 (pin 29)"],
+  "header": {
+    "left": ["GP0", "GP1", "GND", "GP2", "GP3", "GP4", "GP5", "GND", "GP6", "GP7", "GP8", "GP9", "GND", "GP10", "GP11", "GP12", "GP13", "GND", "GP14", "GP15"],
+    "right": ["VBUS", "VSYS", "GND", "3V3_EN", "3V3(OUT)", "ADC_VREF", "GP28", "AGND", "GP27", "GP26", "RUN", "GP22", "GND", "GP21", "GP20", "GP19", "GP18", "GND", "GP17", "GP16"],
+    "top": "USB"
+  },
+  "spi": [
+    {"name": "SPI0", "sck": ["GP2", "GP6", "GP18", "GP22"], "mosi": ["GP3", "GP7", "GP19"], "miso": ["GP0", "GP4", "GP16"]},
+    {"name": "SPI1", "sck": ["GP10", "GP14", "GP26"], "mosi": ["GP11", "GP15", "GP27"], "miso": ["GP8", "GP12", "GP28"]}
+  ],
+  "firmware": {"project": "pico_nrf24", "board": "pico_w"},
   "notes": ["Firmware: Pico SDK (C), board pico_w.", "The on-board Wi-Fi/Bluetooth radio is not simulated yet; its pins GP23-25 and GP29 are internal."]
 }

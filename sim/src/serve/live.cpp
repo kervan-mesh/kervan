@@ -14,6 +14,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "firmware.hpp"
 #include "report.hpp"
 
 namespace ksim::serve {
@@ -146,6 +147,19 @@ LiveSession::~LiveSession()
 
 // ---- real boards ----
 
+// The firmware wiring of a node's MCU + module and pins, "" if unknown.
+std::string LiveSession::node_wiring(const NodeSpec &n) const
+{
+    if (opt_.devices == nullptr || !n.device || n.device->mcu.empty()) {
+        return {};
+    }
+    try {
+        return hw::firmware_spec(*opt_.devices, n.device->mcu, n.device->module, n.pins).wiring();
+    } catch (const std::exception &) {
+        return {};
+    }
+}
+
 void LiveSession::start_boards()
 {
     std::function<std::unique_ptr<hw::LineIo>(const std::string &)> open = opt_.open_port;
@@ -171,11 +185,20 @@ void LiveSession::start_boards()
                                          ": flash the firmware of this ksim version");
             }
             if (b->hello.radio != "nrf24l01p") {
-                throw std::runtime_error("the board found no nRF24 radio: check the wiring "
-                                         "(ksim wiring " +
-                                         (b->hello.board.empty() ? std::string("rpi-pico")
-                                                                 : b->hello.board) +
-                                         " nrf24l01p)");
+                std::string msg = "the board found no nRF24 radio: check the wiring";
+                const std::string expected = node_wiring(n);
+                if (!b->hello.wiring.empty()) {
+                    msg += "; its firmware expects " + b->hello.wiring;
+                    if (!expected.empty() && expected != b->hello.wiring) {
+                        msg += ", but this node is wired " + expected +
+                               ": build the firmware for this wiring (Node tab, Hardware)";
+                    }
+                } else {
+                    msg += " (ksim wiring " +
+                           (b->hello.board.empty() ? std::string("rpi-pico") : b->hello.board) +
+                           " nrf24l01p)";
+                }
+                throw std::runtime_error(msg);
             }
             hw::command(*b->io, config, "config", opt_.board_timeout_ms);
         } catch (const std::exception &e) {

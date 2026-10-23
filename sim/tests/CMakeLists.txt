@@ -13,6 +13,7 @@ add_executable(ksim_tests
     test_device.cpp
     test_engine.cpp
     test_esb.cpp
+    test_firmware.cpp
     test_hardware.cpp
     test_kervan_stack.cpp
     test_live.cpp
@@ -34,7 +35,8 @@ target_link_libraries(ksim_tests PRIVATE ksim_core ksim_hw ksim_serve ksim_httpl
 target_compile_definitions(ksim_tests PRIVATE
     KSIM_SCENARIO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../scenarios"
     KSIM_PY_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../remote/python"
-    KSIM_NODE_EXE="$<TARGET_FILE:ksim-node>")
+    KSIM_NODE_EXE="$<TARGET_FILE:ksim-node>"
+    KSIM_CMAKE="${CMAKE_COMMAND}")
 if(Python3_Interpreter_FOUND)
     target_compile_definitions(ksim_tests PRIVATE KSIM_PYTHON="${Python3_EXECUTABLE}")
 endif()

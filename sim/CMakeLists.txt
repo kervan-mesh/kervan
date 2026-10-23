@@ -102,7 +102,8 @@ target_link_libraries(ksim-node PRIVATE ksim_remote_client ksim_stack_kervan ksi
 
 # Real boards over serial ports (docs/hardware.md), for live sessions.
 # Virtual boards run the board firmware's logic (firmware/) on modelled chips.
-add_library(ksim_hw src/hw/board.cpp src/hw/serial.cpp src/hw/virtual_board.cpp)
+add_library(ksim_hw src/hw/board.cpp src/hw/firmware.cpp src/hw/serial.cpp
+    src/hw/virtual_board.cpp)
 target_include_directories(ksim_hw PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/hw)
 target_link_libraries(ksim_hw PUBLIC ksim_core PRIVATE kervan_fw_fake nlohmann_json::nlohmann_json
     kervan_warnings)
@@ -121,7 +122,8 @@ target_link_libraries(ksim PRIVATE ksim_core ksim_hw ksim_serve ksim_stack_kerva
 # Defaults for `ksim serve` when run from a build tree; --web and --scenarios override them.
 target_compile_definitions(ksim PRIVATE
     KSIM_DEFAULT_WEB_DIR="${PROJECT_SOURCE_DIR}/web/dist"
-    KSIM_DEFAULT_SCENARIO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/scenarios")
+    KSIM_DEFAULT_SCENARIO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/scenarios"
+    KSIM_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
 if(KERVAN_BUILD_TESTS)
     add_subdirectory(tests)

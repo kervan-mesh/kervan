@@ -39,6 +39,7 @@ public:
         std::function<std::unique_ptr<hw::LineIo>(const std::string &port)> open_port;
         int board_timeout_ms = 3000; // for each answer while the boards start
         int hold_ms = 150; // board reports wait this long, so those of all boards come in order
+        const DeviceRegistry *devices = nullptr; // to name a node's wiring in error messages
     };
 
     struct Snapshot {
@@ -84,6 +85,7 @@ private:
 
     void loop();
     void start_boards();
+    std::string node_wiring(const NodeSpec &n) const;
     void stop_boards();
     void read_board(size_t index);
     void add_reports(bool all); // board reports into the trace

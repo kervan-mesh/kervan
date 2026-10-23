@@ -54,6 +54,9 @@ static void hello(kfw_app_t *a)
     kfw_json_str(&o, "board", a->host.board);
     kfw_json_str(&o, "id", a->host.board_id);
     kfw_json_str(&o, "radio", a->has_radio ? "nrf24l01p" : "none");
+    if (a->host.wiring != NULL) {
+        kfw_json_str(&o, "wiring", a->host.wiring);
+    }
     emit(a, &o);
 }
 

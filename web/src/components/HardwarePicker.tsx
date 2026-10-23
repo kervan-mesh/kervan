@@ -10,12 +10,14 @@ import { useEffect, useState } from 'react';
 
 import { getWiring, type Hardware, type Wiring } from '../api';
 import { nodeHardware, withField, type NodeDoc } from '../model/scenario';
+import { WiringDesigner } from './WiringDesigner';
 
 type Mode = 'none' | 'board' | 'parts';
 
 interface Props {
   node: NodeDoc;
   hw: Hardware;
+  buildAllowed: boolean; // firmware builds (ksim serve --allow-processes)
   onChange: (n: NodeDoc) => void;
 }
 
@@ -101,9 +103,14 @@ function WiringView({ board, mcu, module }: { board?: string; mcu?: string; modu
   );
 }
 
-export function HardwarePicker({ node, hw, onChange }: Props) {
+export function HardwarePicker({ node, hw, buildAllowed, onChange }: Props) {
   const mode = modeOf(node);
   const parts = nodeHardware(node, hw);
+  const [big, setBig] = useState(false);
+  const integrated = parts.board?.integrated ?? false;
+  // pin headers in the catalog: draw the wiring, let pins be chosen, build firmware
+  const designable =
+    mode !== 'none' && !integrated && parts.mcu?.header && (parts.module?.header.length ?? 0) > 0;
 
   const clear = (n: NodeDoc) =>
     withField(withField(withField(n, 'device', undefined), 'mcu', undefined), 'module', undefined);
@@ -241,9 +248,46 @@ export function HardwarePicker({ node, hw, onChange }: Props) {
 
       {mode !== 'none' && parts.module && (
         <details className="wiring-box" open>
-          <summary>Wiring</summary>
-          <WiringView board={node.device} mcu={parts.mcu?.name} module={parts.module.name} />
+          <summary>{designable ? 'Wiring & firmware' : 'Wiring'}</summary>
+          {designable ? (
+            <>
+              <button className="expand" title="Larger view" onClick={() => setBig(true)}>
+                ⤢
+              </button>
+              <WiringDesigner
+                node={node}
+                mcu={parts.mcu!}
+                module={parts.module}
+                buildAllowed={buildAllowed}
+                onChange={onChange}
+              />
+            </>
+          ) : (
+            <WiringView board={node.device} mcu={parts.mcu?.name} module={parts.module.name} />
+          )}
         </details>
+      )}
+      {big && designable && (
+        <div className="modal" role="dialog" aria-label="Wiring and firmware" onClick={() => setBig(false)}>
+          <div className="modal-box wiring-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="inline" style={{ justifyContent: 'space-between' }}>
+              <strong style={{ flex: 'none' }}>
+                Node {node.id}: {parts.module!.title} on {parts.mcu!.title}
+              </strong>
+              <button className="primary" style={{ flex: 'none' }} onClick={() => setBig(false)}>
+                Done
+              </button>
+            </div>
+            <WiringDesigner
+              big
+              node={node}
+              mcu={parts.mcu!}
+              module={parts.module!}
+              buildAllowed={buildAllowed}
+              onChange={onChange}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

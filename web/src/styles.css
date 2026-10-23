@@ -742,7 +742,98 @@ input.payload-text {
   margin: 4px 0;
 }
 
+/* wiring designer: the drawing follows the theme where it can */
+.wiring-drawing {
+  width: 100%;
+  height: auto;
+  display: block;
+  user-select: none;
+}
+
+.wiring-designer.big {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(260px, 2fr);
+  gap: 4px 16px;
+  align-items: start;
+  overflow: auto;
+}
+
+.wiring-designer.big > .wiring-drawing {
+  grid-row: span 8;
+}
+
+.wiring-modal {
+  width: min(1200px, 100%);
+  height: min(860px, 100%);
+  overflow: auto;
+}
+
+.wd-mcu {
+  fill: #1f6f4a;
+  stroke: #145236;
+}
+
+.wd-module {
+  fill: #1b2a3d;
+  stroke: #0e1724;
+}
+
+.wd-title {
+  fill: #e6edf3;
+  font: 600 12px system-ui, sans-serif;
+}
+
+.wd-pin {
+  fill: #c9d1d9;
+  font: 9px system-ui, sans-serif;
+}
+
+.wd-pin.wd-used {
+  fill: #ffffff;
+  font-weight: 700;
+}
+
+.wd-small {
+  fill: var(--muted);
+  font: 8px system-ui, sans-serif;
+}
+
+.wd-cell {
+  fill: #ffffff;
+  font: 600 9px system-ui, sans-serif;
+  pointer-events: none;
+}
+
+.wd-pick {
+  cursor: pointer;
+}
+
+.wiring .swatch {
+  margin-right: 6px;
+}
+
+.firmware h4 {
+  margin: 12px 0 4px;
+  font-size: 12px;
+}
+
+.firmware code {
+  font-size: 11px;
+}
+
+pre.build-log {
+  max-height: 220px;
+  overflow: auto;
+  font-size: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 6px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 details.wiring-box {
+  position: relative;
   margin-top: 6px;
   border: 1px solid var(--border);
   border-radius: 4px;

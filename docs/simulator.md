@@ -103,6 +103,11 @@ A node runs on one of:
 | `"module": "sx1262"` | a module alone (the MCU does not change the radio) |
 | none of these | the scenario's `radio`, without hardware limits |
 
+A node with an MCU + module (or such a board) may choose other MCU pins than the default wiring:
+`"pins": {"CE": "GP15", "SCK": "GP10", ...}` (module pin → MCU header pin). It needs an MCU with a
+`header`, is checked (GPIOs only, no pin twice, SPI signals on one controller) and only matters for
+the wiring guide and the board firmware ([hardware.md](hardware.md#wiring-and-firmware)).
+
 **Radio modules** (`modules/*.json`) decide the physics: radio defaults, power limits, antenna gain
 and an optional LNA. **MCUs** (`mcus/*.json`) do not change results today; they give RAM/flash,
 logic voltage, the 3.3 V supply and pins for the wiring guide (and later the energy model and the
@@ -125,6 +130,11 @@ on the board.
   loaded and when a stack changes the radio at run time.
 - `antenna_dbi` is added to the signal at both ends; `lna_db` lowers the level the receiver needs
   (nRF24, whose sensitivity is a level; LoRa decisions use SNR, which an LNA does not change).
+- Optional, for drawings and pin choices: an MCU's `header` (`left` and `right` rows of pin names
+  as seen from above, `top` e.g. `"USB"`; pins are numbered down the left row, then up the right
+  row), its `spi` controllers (`name` and the pins `sck`, `mosi`, `miso` can use) and `firmware`
+  (`project` in `firmware/`, SDK `board`) when the Kervan board firmware builds for it; a module's
+  `header` (pin names row by row, e.g. `[["GND", "VCC"], ["CE", "CSN"], ...]`).
 - Pin roles: `power`, `gnd`, `spi_sck`, `spi_mosi`, `spi_miso`, `spi_cs`, `gpio_out`, `gpio_in`,
   `gpio_in_optional`. An MCU lists `pins` for `3v3`, `gnd` and the SPI roles, and `gpio` pins in
   the order the wiring guide uses them.

@@ -5,8 +5,9 @@
 
 /*
  * Raspberry Pi Pico (and Pico W) + nRF24L01+ firmware for ksim live sessions
- * (docs/hardware.md). Wiring as `ksim wiring rpi-pico nrf24l01p` shows it: SPI0 on GP16-GP19,
- * CE on GP20 (IRQ on GP21 is not needed). Talks JSON lines over USB (115200 is ignored by USB).
+ * (docs/hardware.md). Pins are build options (KFW_SPI, KFW_PIN_*); the defaults are the wiring
+ * `ksim wiring rpi-pico nrf24l01p` shows: SPI0 on GP16-GP19, CE on GP20 (IRQ is not needed).
+ * Talks JSON lines over USB (115200 is ignored by USB).
  */
 
 #include <stdio.h>
@@ -22,11 +23,26 @@
 
 #include "kfw/app.h"
 
-#define PIN_MISO 16
-#define PIN_CSN 17
-#define PIN_SCK 18
-#define PIN_MOSI 19
-#define PIN_CE 20
+#ifndef KFW_SPI
+#define KFW_SPI 0
+#define KFW_PIN_SCK 18
+#define KFW_PIN_MOSI 19
+#define KFW_PIN_MISO 16
+#define KFW_PIN_CSN 17
+#define KFW_PIN_CE 20
+#endif
+#define PIN_MISO KFW_PIN_MISO
+#define PIN_CSN KFW_PIN_CSN
+#define PIN_SCK KFW_PIN_SCK
+#define PIN_MOSI KFW_PIN_MOSI
+#define PIN_CE KFW_PIN_CE
+#define SPI (KFW_SPI == 1 ? spi1 : spi0)
+#define STR_(x) #x
+#define STR(x) STR_(x)
+/* as ksim writes it (FirmwareSpec::wiring) */
+#define WIRING                                                                                     \
+    "SPI" STR(KFW_SPI) " SCK=GP" STR(KFW_PIN_SCK) " MOSI=GP" STR(KFW_PIN_MOSI) " MISO=GP" STR(     \
+        KFW_PIN_MISO) " CSN=GP" STR(KFW_PIN_CSN) " CE=GP" STR(KFW_PIN_CE)
 #define SPI_HZ (4u * 1000u * 1000u) /* the chip takes 10 MHz; 4 MHz is safe on jumper wires */
 #define LED_ON_US 20000u
 
@@ -37,9 +53,9 @@ static void spi_xfer(void *ctx, const uint8_t *tx, uint8_t *rx, size_t n)
     (void)ctx;
     gpio_put(PIN_CSN, 0);
     if (rx != NULL) {
-        spi_write_read_blocking(spi0, tx, rx, n);
+        spi_write_read_blocking(SPI, tx, rx, n);
     } else {
-        spi_write_blocking(spi0, tx, n);
+        spi_write_blocking(SPI, tx, n);
     }
     gpio_put(PIN_CSN, 1);
 }
@@ -99,7 +115,7 @@ int main(void)
     gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
 #endif
 
-    spi_init(spi0, SPI_HZ);
+    spi_init(SPI, SPI_HZ);
     gpio_set_function(PIN_MISO, GPIO_FUNC_SPI);
     gpio_set_function(PIN_SCK, GPIO_FUNC_SPI);
     gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
@@ -121,6 +137,7 @@ int main(void)
     host.board = "rpi-pico";
 #endif
     host.board_id = id;
+    host.wiring = WIRING;
     io.spi = spi_xfer;
     io.ce = ce;
     io.delay_us = delay;

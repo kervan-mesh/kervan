@@ -65,6 +65,9 @@ export interface McuInfo {
   flash_kb: number;
   clock_mhz: number;
   supply_out_ma: number;
+  header: { left: string[]; right: string[]; top: string } | null; // for drawings and pin choices
+  spi: { name: string; sck: string[]; mosi: string[]; miso: string[] }[];
+  firmware: { project: string; board: string } | null; // the Kervan board firmware builds for it
   notes: string[];
 }
 
@@ -80,6 +83,7 @@ export interface ModuleInfo {
   lna_db: number;
   current_ma: { tx: number; rx: number };
   pins: { name: string; role: string }[];
+  header: string[][]; // pin names row by row, as on the module
   supply_v: { min: number; max: number } | null;
   notes: string[];
 }
@@ -90,11 +94,22 @@ export interface Hardware {
   modules: ModuleInfo[];
 }
 
+export interface WiringRow {
+  module_pin: string;
+  mcu_pin: string; // "GP18 / SPI0 SCK (pin 24)"
+  role: string;
+  mcu_name: string; // "GP18"
+  mcu_number: number; // physical pin, 0 if unknown
+}
+
 export interface Wiring {
   integrated: boolean;
-  rows: { module_pin: string; mcu_pin: string; role: string }[];
+  spi?: string;
+  rows: WiringRow[];
   warnings: string[];
   notes: string[];
+  // with POST /api/wiring: the firmware for this wiring, or why there is none
+  firmware?: { name?: string; wiring?: string; error?: string };
 }
 
 export interface PhyInfo {
@@ -235,6 +250,34 @@ export const getWiring = (board: string, module?: string) =>
     `/api/wiring/${encodeURIComponent(board)}${module ? `/${encodeURIComponent(module)}` : ''}`,
   );
 
+// The wiring for chosen pins (throws with ksim's reason when they cannot work).
+export const wiringFor = (mcu: string, module: string, pins: Record<string, string>) =>
+  request<Wiring>('POST', '/api/wiring', JSON.stringify({ mcu, module, pins }));
+
+// ---- firmware builds (docs/hardware.md, "Wiring and firmware") ----
+
+export interface FirmwareBuild {
+  state: 'idle' | 'running' | 'done' | 'failed';
+  name: string;
+  wiring: string;
+  file: string;
+  error: string;
+  log: string[];
+  seconds: number;
+}
+
+export const buildStatus = () => request<FirmwareBuild>('GET', '/api/firmware/build');
+
+export const buildFirmware = (mcu: string, module: string, pins: Record<string, string>) =>
+  request<FirmwareBuild>('POST', '/api/firmware/build', JSON.stringify({ mcu, module, pins }));
+
+export const bootDrives = () => request<{ drives: string[] }>('GET', '/api/firmware/drives');
+
+export const flashFirmware = (drive?: string) =>
+  request<{ ok: true; drive: string; file: string }>('POST', '/api/firmware/flash', JSON.stringify(drive ? { drive } : {}));
+
+export const revealFirmware = () => request<{ ok: true }>('POST', '/api/firmware/reveal', '{}');
+
 // ---- real boards (docs/hardware.md) ----
 
 export interface BoardHello {
@@ -245,6 +288,7 @@ export interface BoardHello {
   board: string;
   id: string;
   radio: string;
+  wiring?: string; // the pins its firmware was built for
 }
 
 export const listPorts = () => request<{ ports: { port: string }[] }>('GET', '/api/ports');

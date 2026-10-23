@@ -185,6 +185,7 @@ BoardHello hello(LineIo &io, int timeout_ms)
     h.board = j.value("board", "");
     h.id = j.value("id", "");
     h.radio = j.value("radio", "");
+    h.wiring = j.value("wiring", "");
     h.json = j.dump();
     return h;
 }

@@ -98,7 +98,8 @@ function NodeResults({ id, stats, replay, durationUs }: {
 export function NodePanel(props: Props) {
   const { doc, node, catalog } = props;
   const radio = effectiveRadio(doc, node, catalog.hardware, catalog.phys);
-  const limits = nodeHardware(node, catalog.hardware).limits;
+  const hardware = nodeHardware(node, catalog.hardware);
+  const limits = hardware.limits;
   const stacks = stacksFor(radio.type, catalog.stacks);
   const stack = catalog.stacks.find((s) => s.name === node.stack);
   const compatible = stacks.some((s) => s.name === node.stack);
@@ -154,7 +155,12 @@ export function NodePanel(props: Props) {
       </div>
 
       <h3>Hardware</h3>
-      <HardwarePicker node={node} hw={catalog.hardware} onChange={set} />
+      <HardwarePicker
+        node={node}
+        hw={catalog.hardware}
+        buildAllowed={catalog.info.allow_processes}
+        onChange={set}
+      />
 
       <h3>Protocol</h3>
       <div className="row">
@@ -185,6 +191,11 @@ export function NodePanel(props: Props) {
           <h3>Real board</h3>
           <RealBoard
             node={node}
+            parts={
+              hardware.mcu && hardware.module
+                ? { mcu: hardware.mcu.name, module: hardware.module.name }
+                : undefined
+            }
             usable={radio.type === 'nrf24' && node.stack === 'nrf24-esb' && node.process === undefined}
             onChange={set}
           />

@@ -36,6 +36,7 @@ export interface NodeDoc {
   radio?: Record<string, ConfigValue>;
   payload?: PayloadDoc;
   hardware?: { port: string }; // a real board runs this node too, in live sessions
+  pins?: Record<string, string>; // module pin -> MCU pin where the wiring is not the default
   [other: string]: unknown;
 }
 

@@ -36,6 +36,7 @@ node. Keys it does not know (such as `process`) are kept.
 | Map | Nodes on a meter grid (drag to move, wheel to zoom, drag the background to pan). Links: who can hear whom without interference — solid both ways, dashed one way; green SNR ≥ 5 dB, yellow ≥ −5 dB, orange below. During a replay: rings for frames on air (purple: relayed), green arrows for receptions, dashed red/orange/gray lines for frames lost to collisions, half-duplex or a receiver that was off, and the stacks' events as labels. |
 | Scenario tab | Description, simulation settings, path loss model, the radio of nodes without a device, node list. |
 | Node tab | Position, device (board), stack, radio overrides and the stack's options — a form generated from the stack's [config schema](simulator.md#config-schema); an empty field means "default" and stays out of the file. After a run: the node's radio statistics, its stack events and end-of-run counters (`*_stats` events). |
+| Wiring & firmware (Node tab, Pico + nRF24) | The board and module drawn from the catalog with a wire per signal; choose pins by clicking or in the table; **Build firmware** for those pins (Docker), **Open folder**, **Flash to Pico** (BOOTSEL). See [hardware.md](hardware.md#wiring-and-firmware). |
 | Hardware (Node tab) | **Scenario radio**, a **Board**, or **MCU + module** picked from the [hardware catalog](simulator.md#hardware-catalog); shows the parts' key data (RAM, logic voltage, power levels, antenna/LNA, current) and the **wiring**: module pin → MCU pin, with warnings (5 V logic, too little current on the 3.3 V pin) and notes. |
 | Real board (Node tab, nRF24 nodes) | The serial port of a real board that runs this node too in live sessions; **Check** asks the board what it is. See [hardware.md](hardware.md). |
 | Payload (Node tab) | What the node sends: **Stack default** (the stack's own test data, `len` bytes), **Fixed bytes** (hex, e.g. `01 A2 FF`) or **Python** — a function `payload(node, seq, t)` returning `bytes`, with a seeded `rng` (⤢ opens a larger editor). Python needs `ksim serve --allow-processes`. Format: [simulator.md, Payloads](simulator.md#payloads). |
@@ -88,6 +89,12 @@ JSON over HTTP on 127.0.0.1. All POST and PUT bodies are scenario JSON.
 | `PUT /api/scenarios/NAME` | save (only valid scenarios; names: letters, digits, `_`, `-`) |
 | `POST /api/check` | validate; returns the links (`from`, `to`, `rssi`, `snr` for every decodable direction) |
 | `POST /api/run` | run; returns `summary`, `links`, `truncated` and `trace` (the trace lines as an array) |
+| `POST /api/wiring` | `{"mcu", "module", "pins": {"CE": "GP15"}}` → the wiring (rows with `mcu_name`, `mcu_number`, `spi`) and `firmware`: `{name, wiring}` or `{error}` |
+| `POST /api/firmware/build` | same body: build the firmware for that wiring (needs `--allow-processes`); 409 while one runs |
+| `GET /api/firmware/build` | `{state: idle\|running\|done\|failed, name, wiring, file, error, log, seconds}` |
+| `GET /api/firmware/drives` | `{"drives": [...]}`: Picos in BOOTSEL mode |
+| `POST /api/firmware/flash` | `{"drive"?}`: copy the last built file onto it (`--allow-processes`) |
+| `POST /api/firmware/reveal` | open the built file's folder (`--allow-processes`) |
 | `GET /api/ports` | `{"ports": [{"port": "COM5"}, ...]}`: serial ports (and virtual boards) |
 | `POST /api/ports/hello` | `{"port": "COM5"}` → `{"hello": {...}}`: what the board on that port is ([hardware.md](hardware.md#protocol)) |
 | `POST /api/live/start` | `{"scenario": {...}, "speed": 10}`: start a live session (same rules as `/api/run`); returns its status |

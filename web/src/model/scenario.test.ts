@@ -50,6 +50,7 @@ const loraModule: ModuleInfo = {
   lna_db: 0,
   current_ma: { tx: 100, rx: 10 },
   pins: [],
+  header: [],
   supply_v: null,
   notes: [],
 };
@@ -80,6 +81,9 @@ const devices: Hardware = {
       flash_kb: 32,
       clock_mhz: 16,
       supply_out_ma: 50,
+      header: null,
+      spi: [],
+      firmware: null,
       notes: [],
     },
   ],

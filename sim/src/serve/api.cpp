@@ -154,10 +154,23 @@ json limits_json(const std::vector<double> &levels, const std::optional<Range> &
 
 json mcu_json(const McuProfile &m)
 {
-    return {{"name", m.name},         {"version", m.version},   {"title", m.title},
-            {"description", m.description}, {"chip", m.chip},   {"logic_v", m.logic_v},
-            {"ram_kb", m.ram_kb},     {"flash_kb", m.flash_kb}, {"clock_mhz", m.clock_mhz},
-            {"supply_out_ma", m.supply_out_ma}, {"notes", m.notes}};
+    json j{{"name", m.name},         {"version", m.version},   {"title", m.title},
+           {"description", m.description}, {"chip", m.chip},   {"logic_v", m.logic_v},
+           {"ram_kb", m.ram_kb},     {"flash_kb", m.flash_kb}, {"clock_mhz", m.clock_mhz},
+           {"supply_out_ma", m.supply_out_ma}, {"notes", m.notes}};
+    j["header"] = m.header ? json{{"left", m.header->left},
+                                  {"right", m.header->right},
+                                  {"top", m.header->top}}
+                           : json(nullptr);
+    json spi = json::array();
+    for (const SpiBus &b : m.spi) {
+        spi.push_back({{"name", b.name}, {"sck", b.sck}, {"mosi", b.mosi}, {"miso", b.miso}});
+    }
+    j["spi"] = spi;
+    j["firmware"] = m.firmware
+                        ? json{{"project", m.firmware->project}, {"board", m.firmware->board}}
+                        : json(nullptr);
+    return j;
 }
 
 json module_json(const ModuleProfile &m)
@@ -177,6 +190,7 @@ json module_json(const ModuleProfile &m)
            {"lna_db", m.radio.lna_db},
            {"current_ma", {{"tx", m.tx_ma}, {"rx", m.rx_ma}}},
            {"pins", pins},
+           {"header", m.header},
            {"notes", m.notes}};
     j["supply_v"] = m.supply_v ? range_json(*m.supply_v) : json(nullptr);
     return j;
@@ -199,9 +213,14 @@ json wiring_json(const Wiring &w)
 {
     json rows = json::array();
     for (const WiringRow &r : w.rows) {
-        rows.push_back({{"module_pin", r.module_pin}, {"mcu_pin", r.mcu_pin}, {"role", r.role}});
+        rows.push_back({{"module_pin", r.module_pin},
+                        {"mcu_pin", r.mcu_pin},
+                        {"role", r.role},
+                        {"mcu_name", r.mcu_name},
+                        {"mcu_number", r.mcu_number}});
     }
     return {{"integrated", w.integrated},
+            {"spi", w.spi},
             {"rows", rows},
             {"warnings", w.warnings},
             {"notes", w.notes}};
@@ -334,6 +353,12 @@ Response Api::handle(const Request &req) const
             return route == "check" ? check(req.body)
                    : route == "run" ? run(req.body)
                                     : decode(req.body);
+        }
+        if (route == "wiring") {
+            return req.method == "POST" ? wiring_for(req.body) : error(405, "use POST");
+        }
+        if (route.compare(0, 9, "firmware/") == 0) {
+            return firmware(route.substr(9), req.method, req.body);
         }
         if (route == "ports" || route.compare(0, 6, "ports/") == 0) {
             return ports(route.size() > 6 ? route.substr(6) : "", req.method, req.body);
@@ -663,6 +688,165 @@ Response Api::decode(const std::string &body) const
     return json_response({{"fields", fields}});
 }
 
+// ---- wiring and firmware builds ----
+
+namespace {
+
+// {"mcu", "module", "pins": {"CE": "GP15"}} from a request body; throws std::invalid_argument.
+struct WiringRequest {
+    std::string mcu;
+    std::string module;
+    PinChoice pins;
+};
+
+WiringRequest wiring_request(const std::string &body)
+{
+    json req;
+    try {
+        req = json::parse(body);
+    } catch (const json::parse_error &) {
+        throw std::invalid_argument("invalid JSON");
+    }
+    if (!req.is_object() || !req.contains("mcu") || !req.at("mcu").is_string() ||
+        !req.contains("module") || !req.at("module").is_string()) {
+        throw std::invalid_argument("needs {\"mcu\", \"module\", \"pins\": {\"CE\": \"GP15\"}}");
+    }
+    WiringRequest w{req.at("mcu").get<std::string>(), req.at("module").get<std::string>(), {}};
+    if (req.contains("pins")) {
+        const json &p = req.at("pins");
+        if (!p.is_object()) {
+            throw std::invalid_argument("\"pins\" must be an object");
+        }
+        for (const auto &item : p.items()) {
+            if (!item.value().is_string()) {
+                throw std::invalid_argument("\"pins\" values must be pin names");
+            }
+            w.pins[item.key()] = item.value().get<std::string>();
+        }
+    }
+    return w;
+}
+
+json build_json(const hw::FirmwareBuilder::Status &s)
+{
+    return {{"state", s.state}, {"name", s.name},   {"wiring", s.wiring}, {"file", s.file},
+            {"error", s.error}, {"log", s.log},     {"seconds", s.seconds}};
+}
+
+} // namespace
+
+// The wiring for chosen pins, and the firmware that matches it.
+Response Api::wiring_for(const std::string &body) const
+{
+    WiringRequest r;
+    try {
+        r = wiring_request(body);
+    } catch (const std::invalid_argument &e) {
+        return error(400, e.what());
+    }
+    json out;
+    try {
+        out = wiring_json(opt_.devices.wiring(r.mcu, r.module, r.pins));
+    } catch (const std::runtime_error &e) {
+        return error(400, e.what());
+    }
+    try {
+        const hw::FirmwareSpec spec = hw::firmware_spec(opt_.devices, r.mcu, r.module, r.pins);
+        out["firmware"] = {{"name", spec.name()}, {"wiring", spec.wiring()}};
+    } catch (const std::runtime_error &e) {
+        out["firmware"] = {{"error", e.what()}};
+    }
+    return json_response(out);
+}
+
+Response Api::firmware(const std::string &action, const std::string &method,
+                       const std::string &body) const
+{
+    if (action == "drives") {
+        if (method != "GET") {
+            return error(405, "use GET");
+        }
+        json drives = json::array();
+        for (const std::string &d : opt_.list_drives ? opt_.list_drives() : hw::uf2_drives()) {
+            drives.push_back(d);
+        }
+        return json_response({{"drives", drives}});
+    }
+    if (!opt_.builder) {
+        return error(404, "this ksim serve does not build firmware");
+    }
+    if (action == "build" && method == "GET") {
+        return json_response(build_json(opt_.builder->status()));
+    }
+    if (action != "build" && action != "flash" && action != "reveal") {
+        return error(404, "not found");
+    }
+    if (method != "POST") {
+        return error(405, "use POST");
+    }
+    if (!opt_.allow_processes) {
+        return error(403, "building and flashing firmware run programs on this computer: start "
+                          "ksim serve with --allow-processes");
+    }
+    if (action == "build") {
+        hw::FirmwareSpec spec;
+        try {
+            const WiringRequest r = wiring_request(body);
+            spec = hw::firmware_spec(opt_.devices, r.mcu, r.module, r.pins);
+        } catch (const std::exception &e) {
+            return error(400, e.what());
+        }
+        if (!opt_.builder->start(spec)) {
+            return error(409, "a build is running");
+        }
+        return json_response(build_json(opt_.builder->status()));
+    }
+
+    const hw::FirmwareBuilder::Status s = opt_.builder->status();
+    if (action == "reveal") {
+        try {
+            hw::reveal(s.file.empty() ? opt_.builder->out_dir() : s.file);
+        } catch (const std::exception &e) {
+            return error(400, e.what());
+        }
+        return json_response({{"ok", true}});
+    }
+    // flash: the last build onto the board in BOOTSEL mode
+    if (s.state != "done") {
+        return error(409, "build the firmware first");
+    }
+    json req = json::parse(body.empty() ? "{}" : body, nullptr, false);
+    const std::vector<std::string> drives =
+        opt_.list_drives ? opt_.list_drives() : hw::uf2_drives();
+    std::string drive = req.is_object() ? req.value("drive", "") : "";
+    if (drive.empty()) {
+        if (drives.size() != 1) {
+            return error(409, drives.empty()
+                                  ? "no Pico in BOOTSEL mode found: hold BOOTSEL while plugging "
+                                    "it in"
+                                  : "more than one Pico in BOOTSEL mode: say which drive");
+        }
+        drive = drives[0];
+    }
+    if (std::find(drives.begin(), drives.end(), drive) == drives.end()) {
+        return error(400, drive + " is not a Pico in BOOTSEL mode");
+    }
+    try {
+        if (opt_.list_drives) {
+            // tests: a plain directory stands for the drive
+            std::filesystem::copy_file(s.file,
+                                       std::filesystem::path(drive) /
+                                           std::filesystem::path(s.file).filename(),
+                                       std::filesystem::copy_options::overwrite_existing);
+        } else {
+            hw::flash_uf2(s.file, drive);
+        }
+    } catch (const std::exception &e) {
+        return error(400, e.what());
+    }
+    return json_response({{"ok", true}, {"drive", drive}, {"file", s.file}});
+}
+
 // ---- real boards ----
 
 Response Api::ports(const std::string &action, const std::string &method,
@@ -767,6 +951,7 @@ Response Api::live(const std::string &method, const std::string &action,
         o.max_trace_bytes = opt_.max_trace_bytes;
         o.program_dir = opt_.program_dir;
         o.open_port = opt_.open_port;
+        o.devices = &opt_.devices;
         std::shared_ptr<LiveSession> previous;
         {
             const std::lock_guard<std::mutex> lock(live_m_);

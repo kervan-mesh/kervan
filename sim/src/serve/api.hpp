@@ -18,6 +18,7 @@
 
 #include "ksim/device.hpp"
 #include "ksim/simulator.hpp"
+#include "firmware.hpp"
 #include "live.hpp"
 #include "ksim/stack.h"
 
@@ -33,6 +34,10 @@ struct Options {
     // Real boards (docs/hardware.md); empty: serial ports. Tests put simulated boards here.
     std::function<std::unique_ptr<hw::LineIo>(const std::string &port)> open_port;
     std::function<std::vector<std::string>()> list_ports;
+    // Firmware builds (docs/hardware.md); null: building is not offered.
+    std::shared_ptr<hw::FirmwareBuilder> builder;
+    // Boot drives of boards in BOOTSEL mode; empty: hw::uf2_drives. Tests use a directory.
+    std::function<std::vector<std::string>()> list_drives;
 };
 
 struct Request {
@@ -73,6 +78,9 @@ private:
     Response wiring(const std::string &path) const;
     Response ports(const std::string &action, const std::string &method,
                    const std::string &body) const;
+    Response wiring_for(const std::string &body) const;
+    Response firmware(const std::string &action, const std::string &method,
+                      const std::string &body) const;
     Response live(const std::string &method, const std::string &action,
                   const std::string &body) const;
     std::optional<Response> prepare(const std::string &body, Scenario &scn) const;

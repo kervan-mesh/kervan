@@ -5,12 +5,14 @@
 
 // ksim command line: run a scenario file and print a summary.
 
+#include <chrono>
 #include <cstdio>
 #include <cstddef>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
 #include <memory>
+#include <thread>
 #include <iterator>
 #include <fstream>
 #include <string>
@@ -23,6 +25,7 @@
 #include "ksim/stacks/nrf24_esb.h"
 #include "api.hpp"
 #include "board.hpp"
+#include "firmware.hpp"
 #include "http.hpp"
 #include "serial.hpp"
 #include "virtual_board.hpp"
@@ -46,10 +49,12 @@ int usage()
                  "      --virtual-boards N: N boards without hardware (ports virtual:1..N)\n"
                  "  ksim stacks                     list protocol stacks\n"
                  "  ksim devices [--hardware DIR]   list boards, radio modules and MCUs\n"
-                 "  ksim wiring BOARD | MCU MODULE  how to connect a module to an MCU\n"
+                 "  ksim wiring BOARD | MCU MODULE [PIN=GPn ...]  how to connect a module to an MCU\n"
                  "      --hardware DIR: more hardware (DIR/mcus, DIR/modules, DIR/boards)\n"
                  "  ksim ports                      list serial ports (real boards)\n"
                  "  ksim hello PORT                 ask the board on PORT what it is\n"
+                 "  ksim firmware MCU MODULE [PIN=GPn ...]  build the board firmware in Docker,\n"
+                 "                                  e.g. ksim firmware rpi-pico nrf24l01p CE=GP15\n"
                  "  ksim version\n");
     return 2;
 }
@@ -218,6 +223,10 @@ int serve(std::vector<std::string> args)
         };
     }
 
+    ksim::hw::FirmwareBuilder::Options build;
+    build.source_dir = KSIM_SOURCE_DIR;
+    opt.builder = std::make_shared<ksim::hw::FirmwareBuilder>(build);
+
     const std::string scenario_dir = opt.scenario_dir;
     const ksim::serve::Api api(std::move(opt));
     ksim::serve::HttpServer http(api, web_dir);
@@ -251,6 +260,48 @@ int list_devices(std::vector<std::string> args)
     return 0;
 }
 
+// ksim firmware MCU MODULE [PIN=GPn ...]: build the board firmware for that wiring in Docker
+int build_firmware(std::vector<std::string> args)
+{
+    const ksim::DeviceRegistry devices = load_devices(args);
+    if (args.size() < 2) {
+        return usage();
+    }
+    ksim::PinChoice pins;
+    for (size_t i = 2; i < args.size(); i++) {
+        const size_t eq = args[i].find('=');
+        if (eq == std::string::npos) {
+            return usage();
+        }
+        pins[args[i].substr(0, eq)] = args[i].substr(eq + 1);
+    }
+    const ksim::hw::FirmwareSpec spec = ksim::hw::firmware_spec(devices, args[0], args[1], pins);
+    std::printf("building %s (%s)\n", spec.name().c_str(), spec.wiring().c_str());
+    std::fflush(stdout);
+    ksim::hw::FirmwareBuilder::Options opt;
+    opt.source_dir = KSIM_SOURCE_DIR;
+    ksim::hw::FirmwareBuilder builder(opt);
+    builder.start(spec);
+    size_t shown = 0;
+    ksim::hw::FirmwareBuilder::Status s;
+    do {
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        s = builder.status();
+        for (; shown < s.log.size(); shown++) { // the log keeps its last lines only
+            std::printf("%s\n", s.log[shown].c_str());
+        }
+        std::fflush(stdout);
+    } while (s.state == "running");
+    if (s.state != "done") {
+        std::fprintf(stderr, "error: %s\n", s.error.c_str());
+        return 1;
+    }
+    std::printf("firmware: %s\nflash it: hold BOOTSEL while plugging the Pico in, copy the file "
+                "onto the RPI-RP2 drive\n",
+                s.file.c_str());
+    return 0;
+}
+
 // ksim wiring BOARD | MCU MODULE
 int print_wiring(std::vector<std::string> args)
 {
@@ -269,13 +320,21 @@ int print_wiring(std::vector<std::string> args)
         }
         mcu = b->mcu;
         module = b->module;
-    } else if (args.size() == 2) {
+    } else if (args.size() >= 2) {
         mcu = args[0];
         module = args[1];
     } else {
         return usage();
     }
-    const ksim::Wiring w = devices.wiring(mcu, module);
+    ksim::PinChoice pins; // MCU MODULE CE=GP15 ...
+    for (size_t i = 2; i < args.size(); i++) {
+        const size_t eq = args[i].find('=');
+        if (eq == std::string::npos) {
+            return usage();
+        }
+        pins[args[i].substr(0, eq)] = args[i].substr(eq + 1);
+    }
+    const ksim::Wiring w = devices.wiring(mcu, module, pins);
     std::printf("%-10s  %-30s  %s\n", "module", "mcu", "role");
     for (const ksim::WiringRow &r : w.rows) {
         std::printf("%-10s  %-30s  %s\n", r.module_pin.c_str(),
@@ -327,6 +386,9 @@ int main(int argc, char **argv)
             const auto io = ksim::hw::open_serial(args[0]);
             std::printf("%s\n", ksim::hw::hello(*io, 3000).json.c_str());
             return 0;
+        }
+        if (cmd == "firmware") {
+            return build_firmware(args);
         }
         if (cmd == "stacks") {
             for (const ksim_stack_t *stack : builtin_stacks) {

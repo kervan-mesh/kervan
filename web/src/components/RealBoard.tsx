@@ -8,20 +8,22 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import { boardHello, listPorts, type BoardHello } from '../api';
+import { boardHello, listPorts, wiringFor, type BoardHello } from '../api';
 import { withField, type NodeDoc } from '../model/scenario';
 
 interface Props {
   node: NodeDoc;
   usable: boolean; // nrf24-esb on an nRF24 radio
+  parts?: { mcu: string; module: string }; // to compare the board's firmware with the wiring
   onChange: (n: NodeDoc) => void;
 }
 
-export function RealBoard({ node, usable, onChange }: Props) {
+export function RealBoard({ node, usable, parts, onChange }: Props) {
   const [ports, setPorts] = useState<string[] | null>(null);
   const [hello, setHello] = useState<BoardHello | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  const [expected, setExpected] = useState<string | null>(null); // the wiring the node asks for
   const port = node.hardware?.port ?? '';
 
   const refresh = useCallback(async () => {
@@ -46,7 +48,13 @@ export function RealBoard({ node, usable, onChange }: Props) {
     setHello(null);
     setError(null);
     try {
-      setHello((await boardHello(port)).hello);
+      const h = (await boardHello(port)).hello;
+      setHello(h);
+      setExpected(null);
+      if (h.wiring && parts) {
+        const w = await wiringFor(parts.mcu, parts.module, node.pins ?? {});
+        setExpected(w.firmware?.wiring ?? null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -100,6 +108,18 @@ export function RealBoard({ node, usable, onChange }: Props) {
           {hello.radio === 'none' ? '⚠ ' : '✓ '}
           {hello.board} {hello.id} · {hello.fw} v{hello.version} ·{' '}
           {hello.radio === 'none' ? 'no nRF24 radio found: check the wiring' : `radio ${hello.radio}`}
+          {hello.wiring && (
+            <>
+              <br />
+              firmware pins: <code>{hello.wiring}</code>
+            </>
+          )}
+        </p>
+      )}
+      {hello?.wiring && expected && expected !== hello.wiring && (
+        <p className="warning">
+          ⚠ This node is wired <code>{expected}</code>: build and flash the firmware for it
+          (Hardware → Wiring &amp; firmware), or wire the module as the board expects.
         </p>
       )}
       {error && (

@@ -163,6 +163,105 @@ TEST(Device, Wiring)
     EXPECT_THROW(reg.wiring("rpi-pico", "nope"), std::runtime_error);
 }
 
+TEST(Device, PinHeader)
+{
+    const DeviceRegistry reg = DeviceRegistry::builtin();
+    const McuProfile &pico = *reg.mcu("rpi-pico");
+    ASSERT_TRUE(pico.header.has_value());
+    EXPECT_EQ(pico.header->left.size(), 20u);
+    EXPECT_EQ(pico.pin_number("GP0"), 1);
+    EXPECT_EQ(pico.pin_number("GP15"), 20);
+    EXPECT_EQ(pico.pin_number("GP16"), 21);
+    EXPECT_EQ(pico.pin_number("3V3(OUT)"), 36);
+    EXPECT_EQ(pico.pin_number("VBUS"), 40);
+    EXPECT_EQ(pico.pin_number("GP23"), 0); // inside the board
+    ASSERT_EQ(pico.spi.size(), 2u);
+    EXPECT_EQ(pico.spi[1].name, "SPI1");
+    ASSERT_TRUE(pico.firmware.has_value());
+    EXPECT_EQ(pico.firmware->board, "pico");
+    EXPECT_EQ(reg.mcu("rpi-pico-w")->firmware->board, "pico_w");
+    EXPECT_FALSE(reg.mcu("esp32")->header.has_value());
+    const ModuleProfile &nrf = *reg.module("nrf24l01p");
+    ASSERT_EQ(nrf.header.size(), 4u);
+    EXPECT_EQ(nrf.header[0][0], "GND");
+    EXPECT_EQ(nrf.header[3][1], "IRQ");
+}
+
+TEST(Device, ChosenPins)
+{
+    const DeviceRegistry reg = DeviceRegistry::builtin();
+    const auto row = [](const Wiring &w, const std::string &module_pin) {
+        for (const WiringRow &r : w.rows) {
+            if (r.module_pin == module_pin) {
+                return r;
+            }
+        }
+        return WiringRow{};
+    };
+
+    // the default, described from the header
+    Wiring w = reg.wiring("rpi-pico", "nrf24l01p");
+    EXPECT_EQ(w.spi, "SPI0");
+    EXPECT_EQ(row(w, "SCK").mcu_pin, "GP18 / SPI0 SCK (pin 24)");
+    EXPECT_EQ(row(w, "SCK").mcu_name, "GP18");
+    EXPECT_EQ(row(w, "SCK").mcu_number, 24);
+    EXPECT_EQ(row(w, "CSN").mcu_pin, "GP17 (pin 22)");
+    EXPECT_EQ(row(w, "GND").mcu_number, 38); // the catalog's GND, not the first one on the header
+    EXPECT_EQ(row(w, "VCC").mcu_name, "3V3(OUT)");
+
+    // CE elsewhere: IRQ keeps its default
+    w = reg.wiring("rpi-pico", "nrf24l01p", {{"CE", "GP15"}});
+    EXPECT_EQ(row(w, "CE").mcu_pin, "GP15 (pin 20)");
+    EXPECT_EQ(row(w, "IRQ").mcu_name, "GP21");
+    // CE onto IRQ's default: IRQ moves to a free GPIO of the list
+    w = reg.wiring("rpi-pico", "nrf24l01p", {{"CE", "GP21"}});
+    EXPECT_EQ(row(w, "IRQ").mcu_name, "GP20");
+
+    // SPI1
+    w = reg.wiring("rpi-pico", "nrf24l01p",
+                   {{"SCK", "GP10"}, {"MOSI", "GP11"}, {"MISO", "GP12"}, {"CSN", "GP13"}});
+    EXPECT_EQ(w.spi, "SPI1");
+    EXPECT_EQ(row(w, "MISO").mcu_pin, "GP12 / SPI1 MISO (pin 16)");
+
+    const auto error = [&](const PinChoice &pins, const std::string &mcu = "rpi-pico") {
+        try {
+            reg.wiring(mcu, "nrf24l01p", pins);
+        } catch (const std::runtime_error &e) {
+            return std::string(e.what());
+        }
+        return std::string("no error");
+    };
+    EXPECT_EQ(error({{"CE", "GP99"}}), "pins: GP99 is not a GPIO on the header of Raspberry Pi Pico");
+    EXPECT_EQ(error({{"CE", "VBUS"}}), "pins: VBUS is not a GPIO on the header of Raspberry Pi Pico");
+    EXPECT_EQ(error({{"CE", "GP17"}}), "pins: GP17 is wired to both CE and CSN");
+    EXPECT_EQ(error({{"VCC", "GP3"}}), "pins: VCC always goes to 3.3 V");
+    EXPECT_EQ(error({{"GND", "GP3"}}), "pins: GND always goes to GND");
+    EXPECT_EQ(error({{"ANT", "GP3"}}), "pins: nRF24L01+ module (PCB antenna) has no pin 'ANT'");
+    EXPECT_NE(error({{"SCK", "GP10"}}).find("must be on one SPI controller (SPI0: SCK GP2/GP6/"),
+              std::string::npos);
+    EXPECT_EQ(error({{"CE", "GP15"}}, "arduino-nano"),
+              "pins: choosing pins needs an MCU whose pin header is in the catalog");
+    EXPECT_EQ(error({}), "no error");
+}
+
+TEST(Device, HeaderParseErrors)
+{
+    expect_error(parse_mcu, R"({"name": "x", "header": {"left": ["A"], "right": []}})",
+                 "same length");
+    expect_error(parse_mcu, R"({"name": "x", "header": {"left": ["A"], "right": ["B"]},
+                                "spi": [{"name": "S", "sck": ["C"]}]})",
+                 "C is not on the header");
+    expect_error(parse_mcu, R"({"name": "x", "spi": {}})", "must be an array");
+    expect_error(parse_mcu, R"({"name": "x", "firmware": {"project": "p"}})",
+                 "needs \"project\" and \"board\"");
+    expect_error(parse_module, R"({"name": "x", "radio": {"type": "lora"},
+                                   "pins": [{"name": "A", "role": "power"}],
+                                   "header": [["A", "B"]]})",
+                 "B is not one of the module's pins");
+    expect_error(parse_module, R"({"name": "x", "radio": {"type": "lora"}, "header": 1})",
+                 "rows of pin names");
+}
+
 TEST(Device, WiringWarnsAboutMissingPins)
 {
     DeviceRegistry reg = DeviceRegistry::builtin();

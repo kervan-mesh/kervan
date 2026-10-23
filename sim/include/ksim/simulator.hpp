@@ -56,6 +56,7 @@ struct NodeSpec {
     std::optional<ProcessSpec> process;  // set: the stack runs in its own process
     std::optional<PayloadSpec> payload;  // set: the host supplies payloads (app_payload)
     std::optional<HardwareSpec> hardware; // set: a real board joins live sessions as this node
+    PinChoice pins; // module pin -> MCU pin where the wiring differs from the default
 };
 
 struct Scenario {

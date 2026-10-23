@@ -21,5 +21,6 @@
     { "name": "MISO", "role": "spi_miso" },
     { "name": "IRQ", "role": "gpio_in_optional" }
   ],
+  "header": [["GND", "VCC"], ["CE", "CSN"], ["SCK", "MOSI"], ["MISO", "IRQ"]],
   "notes": ["Never connect VCC to 5 V.", "A 10 uF capacitor across VCC and GND close to the module makes it reliable."]
 }

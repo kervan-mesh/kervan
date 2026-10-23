@@ -212,7 +212,7 @@ NodeSpec parse_node(const json &jn, const Scenario &s, const DeviceRegistry &dev
 {
     check_object(jn,
                  {"id", "pos", "device", "mcu", "module", "stack", "config", "radio", "process",
-                  "payload", "hardware"},
+                  "payload", "hardware", "pins"},
                  where);
     if (!jn.contains("id") || !jn.contains("pos") || !jn.contains("stack")) {
         fail(where, "needs \"id\", \"pos\" and \"stack\"");
@@ -271,6 +271,31 @@ NodeSpec parse_node(const json &jn, const Scenario &s, const DeviceRegistry &dev
     }
     if (jn.contains("hardware")) {
         n.hardware = parse_hardware(jn.at("hardware"), where + ".hardware");
+    }
+    if (jn.contains("pins")) {
+        // how the module is wired to the MCU (docs/hardware.md); no effect on the simulation
+        const json &jp = jn.at("pins");
+        if (!jp.is_object()) {
+            fail(where + ".pins", "must be an object like {\"CE\": \"GP15\"}");
+        }
+        for (const auto &item : jp.items()) {
+            n.pins[item.key()] = get_string(jp, item.key().c_str(), "", where + ".pins");
+        }
+        std::string mcu = get_string(jn, "mcu", "", where);
+        std::string module = get_string(jn, "module", "", where);
+        if (n.device && n.device->board) {
+            const BoardProfile *b = devices.board_profile(n.device->name);
+            mcu = b != nullptr && !b->integrated ? b->mcu : "";
+            module = b != nullptr ? b->module : "";
+        }
+        if (mcu.empty() || module.empty()) {
+            fail(where + ".pins", "needs an MCU and a radio module wired to it");
+        }
+        try {
+            devices.wiring(mcu, module, n.pins);
+        } catch (const std::runtime_error &e) {
+            fail(where + ".pins", std::string(e.what()).substr(6)); // without "pins: "
+        }
     }
     return n;
 }

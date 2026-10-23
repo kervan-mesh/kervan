@@ -21,5 +21,6 @@
     { "name": "MISO", "role": "spi_miso" },
     { "name": "IRQ", "role": "gpio_in_optional" }
   ],
+  "header": [["GND", "VCC"], ["CE", "CSN"], ["SCK", "MOSI"], ["MISO", "IRQ"]],
   "notes": ["Never connect VCC to 5 V.", "Draws over 100 mA while sending: add a 10-100 uF capacitor across VCC and GND, or power it from its own 3.3 V regulator.", "Two of these modules closer than about 1 m can overload each other's receiver; use a low power level on the bench."]
 }

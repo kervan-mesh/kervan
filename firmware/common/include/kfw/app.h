@@ -24,7 +24,7 @@ extern "C" {
 #endif
 
 #define KFW_FIRMWARE "kervan-nrf24"
-#define KFW_VERSION 1
+#define KFW_VERSION 2
 #define KFW_PROTOCOL 1
 #define KFW_LINE_MAX 512u /* longest command line */
 #define KFW_TX_TIMEOUT_US 100000u
@@ -35,6 +35,7 @@ typedef struct {
     void *ctx;
     const char *board;    /* catalog name, e.g. "rpi-pico" */
     const char *board_id; /* unique id of this board */
+    const char *wiring;   /* the pins it was built for, e.g. "SPI0 SCK=GP18 ..."; may be NULL */
 } kfw_app_host_t;
 
 /* What "config" sets; the meaning of each field is that of the nrf24-esb stack option. */

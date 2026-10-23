@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <vector>
 #include <stdexcept>
 #include <thread>
 
@@ -16,6 +17,7 @@
 #else
 #include <csignal>
 #include <cstdlib>
+#include <fcntl.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #endif
@@ -97,7 +99,7 @@ Process &Process::operator=(Process &&other) noexcept
 }
 
 Process Process::spawn(const std::vector<std::string> &argv, const Env &env,
-                       const std::string &search_dir)
+                       const std::string &search_dir, const std::string &output)
 {
     if (argv.empty()) {
         throw std::invalid_argument("empty command");
@@ -112,12 +114,44 @@ Process Process::spawn(const std::vector<std::string> &argv, const Env &env,
     for (size_t i = 1; i < argv.size(); i++) {
         cmdline += " " + quote(argv[i]);
     }
-    STARTUPINFOA si{};
-    si.cb = sizeof(si);
     PROCESS_INFORMATION pi{};
-    if (!CreateProcessA(nullptr, cmdline.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si,
-                        &pi)) {
-        throw std::runtime_error("cannot start '" + program + "'");
+    if (output.empty()) {
+        STARTUPINFOA si{};
+        si.cb = sizeof(si);
+        if (!CreateProcessA(nullptr, cmdline.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr,
+                            &si, &pi)) {
+            throw std::runtime_error("cannot start '" + program + "'");
+        }
+    } else {
+        // the child inherits the output file and nothing else (not ksim's sockets)
+        SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
+        HANDLE out = CreateFileA(output.c_str(), GENERIC_WRITE,
+                                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, &sa,
+                                 CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (out == INVALID_HANDLE_VALUE) {
+            throw std::runtime_error("cannot create " + output);
+        }
+        SIZE_T size = 0;
+        InitializeProcThreadAttributeList(nullptr, 1, 0, &size);
+        std::vector<char> storage(size);
+        auto *attrs = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage.data());
+        InitializeProcThreadAttributeList(attrs, 1, 0, &size);
+        UpdateProcThreadAttribute(attrs, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, &out, sizeof(out),
+                                  nullptr, nullptr);
+        STARTUPINFOEXA si{};
+        si.StartupInfo.cb = sizeof(si);
+        si.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+        si.StartupInfo.hStdOutput = out;
+        si.StartupInfo.hStdError = out;
+        si.lpAttributeList = attrs;
+        const BOOL ok = CreateProcessA(nullptr, cmdline.data(), nullptr, nullptr, TRUE,
+                                       EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW, nullptr,
+                                       nullptr, &si.StartupInfo, &pi);
+        DeleteProcThreadAttributeList(attrs);
+        CloseHandle(out);
+        if (!ok) {
+            throw std::runtime_error("cannot start '" + program + "'");
+        }
     }
     CloseHandle(pi.hThread);
     p.handle_ = pi.hProcess;
@@ -134,6 +168,13 @@ Process Process::spawn(const std::vector<std::string> &argv, const Env &env,
         throw std::runtime_error("fork failed");
     }
     if (pid == 0) {
+        if (!output.empty()) {
+            const int fd = open(output.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            const int in = open("/dev/null", O_RDONLY);
+            if (fd < 0 || in < 0 || dup2(fd, 1) < 0 || dup2(fd, 2) < 0 || dup2(in, 0) < 0) {
+                _exit(126);
+            }
+        }
         for (const auto &[name, value] : env) {
             setenv(name.c_str(), value.c_str(), 1);
         }
@@ -202,6 +243,18 @@ void Process::kill()
     pid_ = -1;
 #endif
     exit_code_ = -1;
+}
+
+void Process::detach()
+{
+#if defined(_WIN32)
+    if (handle_ != nullptr) {
+        CloseHandle(handle_);
+        handle_ = nullptr;
+    }
+#else
+    pid_ = -1; // reaped by nobody: a short-lived helper leaves a zombie until ksim exits
+#endif
 }
 
 } // namespace ksim

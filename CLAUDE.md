@@ -170,6 +170,11 @@ every push/PR.
     (cyan on the map, "Real boards vs. simulation" in Results); `ksim ports`/`hello`,
     `/api/ports`, `--virtual-boards N` (docs/hardware.md). Not yet: Python payloads on boards,
     other stacks/boards
+  - [x] 6e (done before 6c, at the user's request): wiring designer + firmware builds — catalog
+    MCUs/modules carry pin `header`s (+ MCU `spi`, `firmware`), nodes may choose `"pins"`
+    (checked in `DeviceRegistry::wiring`), SVG drawing in the UI (`WiringDesigner`), firmware for
+    those pins built in Docker by `ksim serve` (`hw::FirmwareBuilder`, `/api/firmware/*`,
+    `ksim firmware`), open folder, flash to a Pico in BOOTSEL; boards report their `wiring`
   - [ ] 6c ← next: true HIL: firmware hands its frames to ksim over USB, ksim models the channel; real
     and virtual nodes in one network (µs collisions of nRF24 only approximate through USB; LoRa fine)
   - [ ] 6d: calibrate path loss, shadowing and the PA/LNA estimates from measurements

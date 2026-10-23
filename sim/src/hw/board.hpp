@@ -23,7 +23,8 @@ struct BoardHello {
     int proto = 0;     // protocol version
     std::string board; // catalog MCU name, "rpi-pico"
     std::string id;    // the board's unique id
-    std::string radio; // "nrf24l01p", "none"
+    std::string radio;  // "nrf24l01p", "none"
+    std::string wiring; // the pins the firmware was built for (FirmwareSpec::wiring), "" if unknown
     std::string json;  // the whole answer
 };
 

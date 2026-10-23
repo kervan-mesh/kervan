@@ -56,6 +56,7 @@ static void boot(kfw_app_t *app, fake_nrf24_t *chip, out_t *o, const char *id, b
     kfw_nrf24_io_t io;
 
     memset(o, 0, sizeof(*o));
+    memset(&host, 0, sizeof(host));
     host.write_line = write_line;
     host.activity = activity;
     host.ctx = o;
@@ -133,7 +134,7 @@ static void test_hello(void)
     out_t o;
 
     cmd(&a, " {\"cmd\":\"hello\"} ", 0);
-    TEST_ASSERT_EQUAL_STRING("{\"ev\":\"hello\",\"fw\":\"kervan-nrf24\",\"version\":1,"
+    TEST_ASSERT_EQUAL_STRING("{\"ev\":\"hello\",\"fw\":\"kervan-nrf24\",\"version\":2,"
                              "\"proto\":1,\"board\":\"rpi-pico\",\"id\":\"E6605838\","
                              "\"radio\":\"nrf24l01p\"}",
                              last(&out_a));
