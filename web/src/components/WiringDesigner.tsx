@@ -311,7 +311,21 @@ export function WiringDesigner({ node, mcu, module, buildAllowed, onChange, big 
           setError(null);
         }
       })
-      .catch((e: unknown) => live && setError(e instanceof Error ? e.message : String(e)));
+      .catch(async (e: unknown) => {
+        if (!live) {
+          return;
+        }
+        setError(e instanceof Error ? e.message : String(e));
+        // draw the default wiring meanwhile, so the drawing never disappears
+        try {
+          const w = await wiringFor(mcu.name, module.name, {});
+          if (live) {
+            setWiring(w);
+          }
+        } catch {
+          setWiring(null);
+        }
+      });
     return () => {
       live = false;
     };
@@ -359,7 +373,11 @@ export function WiringDesigner({ node, mcu, module, buildAllowed, onChange, big 
           ? `Now click the board pin for ${selected} (Esc: cancel).`
           : 'Click a module pin, then a pin of the board, or pick pins in the table.'}
       </p>
-      {error && <p className="warning">⚠ {error}</p>}
+      {error && (
+        <p className="warning">
+          ⚠ {error}. The drawing shows the default wiring: press Default pins to use it.
+        </p>
+      )}
       {wiring?.warnings.map((w) => (
         <p key={w} className="warning">
           ⚠ {w}

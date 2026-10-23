@@ -43,7 +43,8 @@ In the Node tab, section Hardware, a node with **MCU + module** gets **Wiring & 
 board's pin headers and the module's pads as seen from above, with a coloured wire per signal (⤢
 opens a larger view). Every MCU board in the catalog with a header is drawn — Pico family, ESP32
 dev kits, STM32 Blue Pill and Nucleo-F401RE, Nordic DKs — with nRF24 and
-LoRa modules (RFM95W-style SX1276, Ebyte E32-900M30S). The board firmware (nRF24 modules for
+LoRa modules (RFM95W-style SX1276, Ebyte E32-900M30S, Ebyte E22-900M22S; the generic SX1262 as a
+list of its signals). Changing the board or module drops pins chosen for the old one. The board firmware (nRF24 modules for
 now; LoRa comes with phase 7) builds for:
 
 | Board | Built with | Result | Onto the board |

@@ -25,5 +25,16 @@
     { "name": "BUSY", "role": "gpio_in" },
     { "name": "DIO1", "role": "gpio_in" }
   ],
-  "notes": ["3.3 V logic only."]
+  "header": [
+    [{"name": "VCC", "label": "VCC"}],
+    [{"name": "GND", "label": "GND"}],
+    [{"name": "NSS", "label": "NSS"}],
+    [{"name": "SCK", "label": "SCK"}],
+    [{"name": "MOSI", "label": "MOSI"}],
+    [{"name": "MISO", "label": "MISO"}],
+    [{"name": "RESET", "label": "RESET"}],
+    [{"name": "BUSY", "label": "BUSY"}],
+    [{"name": "DIO1", "label": "DIO1"}]
+  ],
+  "notes": ["3.3 V logic only.", "A generic SX1262: its signals are drawn as a list. For a real module pick one by name, such as the Ebyte E22-900M22S."]
 }

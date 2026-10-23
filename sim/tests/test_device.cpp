@@ -67,7 +67,7 @@ TEST(Device, BuiltinCatalog)
         EXPECT_FALSE(reg.module(m)->pins.empty()) << m;
     }
     EXPECT_EQ(reg.mcus().size(), 15u);
-    EXPECT_EQ(reg.modules().size(), 5u);
+    EXPECT_EQ(reg.modules().size(), 6u);
     EXPECT_EQ(reg.board_profile("esp32-sx1276")->integrated, true);
 }
 
@@ -211,19 +211,44 @@ TEST(Device, PinHeader)
     EXPECT_EQ(d13.name, "PA5");
     EXPECT_EQ(d13.label, "D13");
 
-    // every catalog MCU with a header: its defaults and SPI pins are on it and wire up
+    // every module is drawn: each of its pins has a pad
+    for (const ModuleProfile *mod : reg.modules()) {
+        EXPECT_FALSE(mod->header.empty()) << mod->name;
+        for (const ModulePin &pin : mod->pins) {
+            bool drawn = false;
+            for (const auto &row : mod->header) {
+                for (const HeaderPin &pad : row) {
+                    drawn = drawn || pad.name == pin.name;
+                }
+            }
+            EXPECT_TRUE(drawn) << mod->name << " " << pin.name;
+        }
+    }
+
+    // every catalog MCU board with a header wires every module: defaults on the header, SPI on
+    // one controller, every pin it needs placed
+    size_t boards = 0;
     for (const McuProfile *m : reg.mcus()) {
         if (!m->header) {
+            EXPECT_TRUE(m->name == "esp32" || m->name == "esp32-s3") << m->name; // bare chips
             continue;
         }
+        boards++;
         EXPECT_FALSE(m->io.empty()) << m->name;
         EXPECT_FALSE(m->spi.empty()) << m->name;
-        const Wiring w = reg.wiring(m->name, "nrf24l01p");
-        for (const WiringRow &r : w.rows) {
-            EXPECT_GE(r.mcu_strip, 0) << m->name << " " << r.module_pin << " -> " << r.mcu_name;
+        for (const ModuleProfile *mod : reg.modules()) {
+            SCOPED_TRACE(m->name + " + " + mod->name);
+            Wiring w;
+            ASSERT_NO_THROW(w = reg.wiring(m->name, mod->name));
+            for (const WiringRow &r : w.rows) {
+                if (r.role != "gpio_in_optional" || !r.mcu_name.empty()) {
+                    EXPECT_GE(r.mcu_strip, 0) << r.module_pin << " -> " << r.mcu_name;
+                }
+            }
+            EXPECT_FALSE(w.spi.empty());
         }
-        EXPECT_FALSE(w.spi.empty()) << m->name;
     }
+    EXPECT_EQ(boards, 13u);
 
     const ModuleProfile &nrf = *reg.module("nrf24l01p");
     ASSERT_EQ(nrf.header.size(), 4u);

@@ -180,7 +180,7 @@ every push/PR.
     `ksim firmware`), open folder, flash to a Pico in BOOTSEL; boards report their `wiring`
     Catalog now has 18 MCU boards with headers (Pico family, ESP32 kits incl. the user's DevKit
     V1, Blue Pill, the user's Nucleo-F401RE, nRF52/52840/5340/7002 DKs;
-    header strips with gaps, labels, numbering) and the user's Ebyte E32-900M30S; pinouts from
+    header strips with gaps, labels, numbering), the user's Ebyte E32-900M30S and an E22-900M22S; pinouts from
     vendor docs / Zephyr board files, noted per file. The user's E18-MS1PA2 (CC2530 Zigbee) waits
     for an 802.15.4 PHY. Firmware builds with Zephyr for the nRF DKs, Nucleo-F401RE and ESP32 kits
     (`.hex`/`.bin`, flashed by copying onto the J-Link/ST-LINK drive or with esptool); Arduino

@@ -112,8 +112,12 @@ export function HardwarePicker({ node, hw, buildAllowed, onChange }: Props) {
   const designable =
     mode !== 'none' && !integrated && parts.mcu?.header && (parts.module?.header.length ?? 0) > 0;
 
+  // other parts: chosen pins belong to the old ones
+  const unpinned = (n: NodeDoc) => withField(n, 'pins', undefined);
   const clear = (n: NodeDoc) =>
-    withField(withField(withField(n, 'device', undefined), 'mcu', undefined), 'module', undefined);
+    withField(withField(withField(unpinned(n), 'device', undefined), 'mcu', undefined), 'module', undefined);
+  // MCU boards whose pin header is in the catalog (the bare chips serve integrated boards)
+  const mcus = hw.mcus.filter((m) => m.header !== null || m.name === node.mcu);
 
   const switchTo = (m: Mode) => {
     if (m === mode) {
@@ -158,7 +162,7 @@ export function HardwarePicker({ node, hw, buildAllowed, onChange }: Props) {
       {mode === 'board' && (
         <div className="row">
           <label>board</label>
-          <select value={node.device} onChange={(e) => onChange({ ...node, device: e.target.value })}>
+          <select value={node.device} onChange={(e) => onChange({ ...unpinned(node), device: e.target.value })}>
             {parts.missing && <option value={node.device}>{node.device} (unknown)</option>}
             {hw.boards.map((b) => (
               <option key={b.name} value={b.name}>
@@ -175,10 +179,10 @@ export function HardwarePicker({ node, hw, buildAllowed, onChange }: Props) {
             <label>MCU</label>
             <select
               value={node.mcu ?? ''}
-              onChange={(e) => onChange(withField(node, 'mcu', e.target.value || undefined))}
+              onChange={(e) => onChange(withField(unpinned(node), 'mcu', e.target.value || undefined))}
             >
               <option value="">(none)</option>
-              {hw.mcus.map((m) => (
+              {mcus.map((m) => (
                 <option key={m.name} value={m.name}>
                   {m.title}
                 </option>
@@ -187,7 +191,7 @@ export function HardwarePicker({ node, hw, buildAllowed, onChange }: Props) {
           </div>
           <div className="row">
             <label>radio module</label>
-            <select value={node.module ?? ''} onChange={(e) => onChange({ ...node, module: e.target.value })}>
+            <select value={node.module ?? ''} onChange={(e) => onChange({ ...unpinned(node), module: e.target.value })}>
               {hw.modules.map((m) => (
                 <option key={m.name} value={m.name}>
                   {m.title}
