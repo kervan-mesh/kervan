@@ -1,0 +1,35 @@
+{
+  "name": "nucleo-f401re",
+  "version": 1,
+  "title": "STM32 Nucleo-F401RE",
+  "description": "ST NUCLEO-F401RE: STM32F401RE (Cortex-M4F, 84 MHz), 96 KB SRAM, 512 KB flash, with an ST-LINK. Arduino Uno V3 connectors drawn (the ST morpho headers are not).",
+  "chip": "STM32F401RE",
+  "logic_v": 3.3,
+  "ram_kb": 96,
+  "flash_kb": 512,
+  "clock_mhz": 84,
+  "supply_out_ma": 300,
+  "pins": {
+    "3v3": "3V3",
+    "gnd": "GND",
+    "spi_sck": "PA5 (D13, SPI1 SCK)",
+    "spi_mosi": "PA7 (D11, SPI1 MOSI)",
+    "spi_miso": "PA6 (D12, SPI1 MISO)",
+    "spi_cs": "PB6 (D10)"
+  },
+  "gpio": ["PC7", "PA9", "PA8", "PB10", "PA10", "PB3"],
+  "header": {
+    "top": "ST-LINK USB",
+    "strips": [
+      {"name": "CN6", "side": "left", "first": 1, "pins": ["NC", "IOREF", "RESET", "3V3", "5V", "GND", "GND", "VIN"]},
+      {"name": "CN8", "side": "left", "gap": 1, "first": 1, "pins": [{"name": "PA0", "label": "A0"}, {"name": "PA1", "label": "A1"}, {"name": "PA4", "label": "A2"}, {"name": "PB0", "label": "A3"}, {"name": "PC1", "label": "A4"}, {"name": "PC0", "label": "A5"}]},
+      {"name": "CN5", "side": "right", "first": 10, "step": -1, "pins": [{"name": "PB8", "label": "D15"}, {"name": "PB9", "label": "D14"}, "AREF", "GND", {"name": "PA5", "label": "D13"}, {"name": "PA6", "label": "D12"}, {"name": "PA7", "label": "D11"}, {"name": "PB6", "label": "D10"}, {"name": "PC7", "label": "D9"}, {"name": "PA9", "label": "D8"}]},
+      {"name": "CN9", "side": "right", "gap": 1, "first": 8, "step": -1, "pins": [{"name": "PA8", "label": "D7"}, {"name": "PB10", "label": "D6"}, {"name": "PB4", "label": "D5"}, {"name": "PB5", "label": "D4"}, {"name": "PB3", "label": "D3"}, {"name": "PA10", "label": "D2"}, {"name": "PA2", "label": "D1"}, {"name": "PA3", "label": "D0"}]}
+    ]
+  },
+  "io": ["PA0", "PA1", "PA4", "PB0", "PC1", "PC0", "PB8", "PB9", "PA5", "PA6", "PA7", "PB6", "PC7", "PA9", "PA8", "PB10", "PB4", "PB5", "PB3", "PA10"],
+  "spi": [
+    {"name": "SPI1", "sck": ["PA5", "PB3"], "mosi": ["PA7", "PB5"], "miso": ["PA6", "PB4"]}
+  ],
+  "notes": ["Firmware: STM32Cube or Zephyr (C).", "D0/D1 (PA3/PA2) carry the ST-LINK serial port and are not offered.", "Arduino connector map from Zephyr's nucleo_f401re board files (UM1724)."]
+}

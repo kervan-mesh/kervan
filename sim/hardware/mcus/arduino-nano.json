@@ -17,6 +17,17 @@
     "spi_miso": "D12 (MISO)",
     "spi_cs": "D10 (SS)"
   },
-  "gpio": ["D9", "D2 (INT0)", "D3 (INT1)"],
-  "notes": []
+  "gpio": ["D9", "D2", "D3", "D8", "D7", "D6"],
+  "header": {
+    "top": "USB",
+    "strips": [
+      {"side": "left", "first": 16, "pins": ["D13", "3V3", "AREF", "A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7", "5V", "RST", "GND", "VIN"]},
+      {"side": "right", "first": 15, "step": -1, "pins": ["D12", "D11", "D10", "D9", "D8", "D7", "D6", "D5", "D4", "D3", "D2", "GND", "RST", {"name": "D0", "label": "RX0"}, {"name": "D1", "label": "TX1"}]}
+    ]
+  },
+  "io": ["D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10", "D11", "D12", "D13", "A0", "A1", "A2", "A3", "A4", "A5"],
+  "spi": [
+    {"name": "SPI", "sck": ["D13"], "mosi": ["D11"], "miso": ["D12"]}
+  ],
+  "notes": ["Firmware: Arduino (AVR C++).", "5 V logic: modules with 3.3 V inputs need level shifters.", "Hardware SPI is fixed to these pins.", "The 3V3 pin gives only about 50 mA."]
 }

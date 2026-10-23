@@ -107,7 +107,7 @@ FirmwareSpec firmware_spec(const DeviceRegistry &devices, const std::string &mcu
     }
     if (!u->firmware) {
         throw std::runtime_error("there is no Kervan board firmware for " + u->title +
-                                 " yet (only Raspberry Pi Pico and Pico W)");
+                                 " yet (only the Raspberry Pi Pico boards)");
     }
     if (m->radio.type != PhyType::Nrf24) {
         throw std::runtime_error("the board firmware drives nRF24 modules, not " + m->title);

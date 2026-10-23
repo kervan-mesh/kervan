@@ -130,11 +130,25 @@ on the board.
   loaded and when a stack changes the radio at run time.
 - `antenna_dbi` is added to the signal at both ends; `lna_db` lowers the level the receiver needs
   (nRF24, whose sensitivity is a level; LoRa decisions use SNR, which an LNA does not change).
-- Optional, for drawings and pin choices: an MCU's `header` (`left` and `right` rows of pin names
-  as seen from above, `top` e.g. `"USB"`; pins are numbered down the left row, then up the right
-  row), its `spi` controllers (`name` and the pins `sck`, `mosi`, `miso` can use) and `firmware`
-  (`project` in `firmware/`, SDK `board`) when the Kervan board firmware builds for it; a module's
-  `header` (pin names row by row, e.g. `[["GND", "VCC"], ["CE", "CSN"], ...]`).
+- Optional, for drawings and pin choices, an MCU board's `header` as seen from above: `top` and
+  `bottom` name what is at those edges (`"USB"`, `"antenna"`), `strips` are its pin rows:
+  `{"name": "CN5", "side": "left" | "right" | "bottom", "gap": 1, "first": 10, "step": -1,
+  "pins": ["GND", {"name": "PA5", "label": "D13"}]}` — left/right strips run top to bottom and stack
+  (`gap` empty positions between them), bottom strips run left to right and stack downwards;
+  `first`/`step` number the pins (no `first`: not numbered); a pin's `name` is what the MCU calls it
+  (and what `"pins"` and firmware use), its `label` what is printed on the board. With a header come
+  `io` (the GPIO pins one may choose), `input_only` (those that cannot drive a signal) and `spi`
+  (each controller's `name` and the pins `sck`, `mosi`, `miso` can use; MCUs with a GPIO matrix list
+  every pin). `firmware` (`project` in `firmware/`, SDK `board`) when the Kervan board firmware
+  builds for it. A module's `header` lists its pads row by row (`[["GND", "VCC"], ...]`, or
+  `{"name", "label"}` for numbered pads); pads that are not among its `pins` (ANT, NC) are drawn
+  unwired.
+- MCU boards with headers: Raspberry Pi Pico / Pico W / Pico 2, ESP32 DevKit V1 (DOIT, 30 pins),
+  ESP32-DevKitC V4, ESP32-S3-DevKitC-1, ESP32-C3-DevKitM-1, Arduino Nano / Uno R3 / Mega 2560,
+  STM32 Blue Pill, Nucleo-F401RE (Arduino connectors), Nordic nRF52 DK, nRF52840 DK, nRF5340 DK,
+  nRF7002 DK (Arduino connectors). Each file's notes name its pinout source; check against your
+  board's silkscreen where a note asks for it. `esp32` and `esp32-s3` are the bare chips used by
+  integrated boards.
 - Pin roles: `power`, `gnd`, `spi_sck`, `spi_mosi`, `spi_miso`, `spi_cs`, `gpio_out`, `gpio_in`,
   `gpio_in_optional`. An MCU lists `pins` for `3v3`, `gnd` and the SPI roles, and `gpio` pins in
   the order the wiring guide uses them.

@@ -65,10 +65,33 @@ export interface McuInfo {
   flash_kb: number;
   clock_mhz: number;
   supply_out_ma: number;
-  header: { left: string[]; right: string[]; top: string } | null; // for drawings and pin choices
+  header: McuHeader | null; // for drawings and pin choices
+  io: string[]; // header pins that are GPIOs
+  input_only: string[]; // of those, the ones that cannot drive a signal
   spi: { name: string; sck: string[]; mosi: string[]; miso: string[] }[];
   firmware: { project: string; board: string } | null; // the Kervan board firmware builds for it
   notes: string[];
+}
+
+// A pin of a header: what the MCU calls it, what is printed next to it, its number (0: none).
+export interface HeaderPinInfo {
+  name: string;
+  label: string;
+  number: number;
+}
+
+// Pin rows down the left/right edge (top to bottom) or along the bottom (left to right).
+export interface HeaderStripInfo {
+  name: string;
+  side: 'left' | 'right' | 'bottom';
+  gap: number;
+  pins: HeaderPinInfo[];
+}
+
+export interface McuHeader {
+  top: string;
+  bottom: string;
+  strips: HeaderStripInfo[];
 }
 
 export interface ModuleInfo {
@@ -83,7 +106,7 @@ export interface ModuleInfo {
   lna_db: number;
   current_ma: { tx: number; rx: number };
   pins: { name: string; role: string }[];
-  header: string[][]; // pin names row by row, as on the module
+  header: HeaderPinInfo[][]; // the pads row by row, as on the module
   supply_v: { min: number; max: number } | null;
   notes: string[];
 }
@@ -99,7 +122,9 @@ export interface WiringRow {
   mcu_pin: string; // "GP18 / SPI0 SCK (pin 24)"
   role: string;
   mcu_name: string; // "GP18"
-  mcu_number: number; // physical pin, 0 if unknown
+  mcu_number: number; // number on its connector, 0 if unknown
+  mcu_strip: number; // where on the MCU header, -1 if unknown
+  mcu_index: number;
 }
 
 export interface Wiring {

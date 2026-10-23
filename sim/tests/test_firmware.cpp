@@ -89,9 +89,9 @@ TEST(Firmware, SpecFromTheWiring)
         }
         return std::string("no error");
     };
-    EXPECT_EQ(error("esp32", "nrf24l01p"),
-              "there is no Kervan board firmware for ESP32 yet (only Raspberry Pi Pico and "
-              "Pico W)");
+    EXPECT_EQ(
+        error("esp32", "nrf24l01p"),
+        "there is no Kervan board firmware for ESP32 yet (only the Raspberry Pi Pico boards)");
     EXPECT_NE(error("rpi-pico", "sx1276").find("drives nRF24 modules, not"), std::string::npos);
     EXPECT_EQ(error("nope", "nrf24l01p"), "unknown MCU 'nope'");
     EXPECT_EQ(error("rpi-pico", "nope"), "unknown module 'nope'");
@@ -218,8 +218,11 @@ TEST(Firmware, ScenarioPins)
                   .find("needs an MCU and a radio module"),
               std::string::npos);
     // a board that is an MCU + module
-    EXPECT_NE(error(R"({"id": 1, "pos": [0, 0], "device": "arduino-nrf24l01p",
-                       "stack": "nrf24-esb", "pins": {"CE": "D9"}})")
+    EXPECT_EQ(error(R"({"id": 1, "pos": [0, 0], "device": "arduino-nrf24l01p",
+                       "stack": "nrf24-esb", "pins": {"CE": "D8"}})"),
+              "no error");
+    EXPECT_NE(error(R"({"id": 1, "pos": [0, 0], "mcu": "esp32", "module": "sx1276",
+                       "stack": "kervan", "pins": {"NSS": "GPIO15"}})")
                   .find("needs an MCU whose pin header is in the catalog"),
               std::string::npos);
 }
@@ -261,7 +264,8 @@ TEST(Firmware, Api)
     json devices = json::parse(call(api, "GET", "/api/devices").body);
     for (const json &m : devices.at("mcus")) {
         if (m.at("name") == "rpi-pico") {
-            EXPECT_EQ(m.at("header").at("right")[4], "3V3(OUT)");
+            EXPECT_EQ(m.at("header").at("strips")[1].at("pins")[4].at("name"), "3V3(OUT)");
+            EXPECT_EQ(m.at("header").at("strips")[1].at("pins")[4].at("number"), 36);
             EXPECT_EQ(m.at("spi").size(), 2u);
             EXPECT_EQ(m.at("firmware").at("board"), "pico");
         }

@@ -1,0 +1,35 @@
+{
+  "name": "arduino-uno",
+  "version": 1,
+  "title": "Arduino Uno R3",
+  "description": "ATmega328P, 2 KB SRAM, 32 KB flash, 16 MHz, 5 V logic. Drawn turned so that the USB and power jacks are at the top.",
+  "chip": "ATmega328P",
+  "logic_v": 5.0,
+  "ram_kb": 2,
+  "flash_kb": 32,
+  "clock_mhz": 16,
+  "supply_out_ma": 150,
+  "pins": {
+    "3v3": "3V3",
+    "gnd": "GND",
+    "spi_sck": "D13 (SCK)",
+    "spi_mosi": "D11 (MOSI)",
+    "spi_miso": "D12 (MISO)",
+    "spi_cs": "D10 (SS)"
+  },
+  "gpio": ["D9", "D2", "D3", "D8", "D7", "D6"],
+  "header": {
+    "top": "USB",
+    "strips": [
+      {"name": "POWER", "side": "left", "pins": ["NC", "IOREF", "RESET", "3V3", "5V", "GND", "GND", "VIN"]},
+      {"name": "ANALOG", "side": "left", "gap": 1, "pins": ["A0", "A1", "A2", "A3", "A4", "A5"]},
+      {"name": "DIGITAL", "side": "right", "pins": ["SCL", "SDA", "AREF", "GND", "D13", "D12", "D11", "D10", "D9", "D8"]},
+      {"name": "DIGITAL", "side": "right", "gap": 1, "pins": ["D7", "D6", "D5", "D4", "D3", "D2", {"name": "D1", "label": "TX→1"}, {"name": "D0", "label": "RX←0"}]}
+    ]
+  },
+  "io": ["D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10", "D11", "D12", "D13", "A0", "A1", "A2", "A3", "A4", "A5"],
+  "spi": [
+    {"name": "SPI", "sck": ["D13"], "mosi": ["D11"], "miso": ["D12"]}
+  ],
+  "notes": ["Firmware: Arduino (AVR C++).", "5 V logic: modules with 3.3 V inputs need level shifters.", "Hardware SPI is fixed to these pins.", "The 3.3V pin gives about 150 mA."]
+}

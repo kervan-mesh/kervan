@@ -1,0 +1,34 @@
+{
+  "name": "stm32-bluepill",
+  "version": 1,
+  "title": "STM32 Blue Pill (STM32F103C8)",
+  "description": "STM32F103C8T6 (Cortex-M3, 72 MHz), 20 KB SRAM, 64 KB flash; two 20-pin headers. Drawn with the USB connector at the top.",
+  "chip": "STM32F103C8",
+  "logic_v": 3.3,
+  "ram_kb": 20,
+  "flash_kb": 64,
+  "clock_mhz": 72,
+  "supply_out_ma": 300,
+  "pins": {
+    "3v3": "3V3",
+    "gnd": "GND",
+    "spi_sck": "PA5 (SPI1 SCK)",
+    "spi_mosi": "PA7 (SPI1 MOSI)",
+    "spi_miso": "PA6 (SPI1 MISO)",
+    "spi_cs": "PA4 (SPI1 NSS)"
+  },
+  "gpio": ["PB0", "PB1", "PB10", "PB11", "PA3", "PA2"],
+  "header": {
+    "top": "USB",
+    "strips": [
+      {"side": "left", "first": 20, "step": -1, "pins": ["GND", "GND", "3V3", "NRST", {"name": "PB11", "label": "B11"}, {"name": "PB10", "label": "B10"}, {"name": "PB1", "label": "B1"}, {"name": "PB0", "label": "B0"}, {"name": "PA7", "label": "A7"}, {"name": "PA6", "label": "A6"}, {"name": "PA5", "label": "A5"}, {"name": "PA4", "label": "A4"}, {"name": "PA3", "label": "A3"}, {"name": "PA2", "label": "A2"}, {"name": "PA1", "label": "A1"}, {"name": "PA0", "label": "A0"}, {"name": "PC15", "label": "C15"}, {"name": "PC14", "label": "C14"}, {"name": "PC13", "label": "C13"}, {"name": "VBAT", "label": "VB"}]},
+      {"side": "right", "first": 20, "step": -1, "pins": [{"name": "PB12", "label": "B12"}, {"name": "PB13", "label": "B13"}, {"name": "PB14", "label": "B14"}, {"name": "PB15", "label": "B15"}, {"name": "PA8", "label": "A8"}, {"name": "PA9", "label": "A9"}, {"name": "PA10", "label": "A10"}, {"name": "PA11", "label": "A11"}, {"name": "PA12", "label": "A12"}, {"name": "PA15", "label": "A15"}, {"name": "PB3", "label": "B3"}, {"name": "PB4", "label": "B4"}, {"name": "PB5", "label": "B5"}, {"name": "PB6", "label": "B6"}, {"name": "PB7", "label": "B7"}, {"name": "PB8", "label": "B8"}, {"name": "PB9", "label": "B9"}, "5V", "GND", "3V3"]}
+    ]
+  },
+  "io": ["PA0", "PA1", "PA2", "PA3", "PA4", "PA5", "PA6", "PA7", "PA8", "PA9", "PA10", "PA15", "PB0", "PB1", "PB3", "PB4", "PB5", "PB6", "PB7", "PB8", "PB9", "PB10", "PB11", "PB12", "PB13", "PB14", "PB15", "PC13", "PC14", "PC15"],
+  "spi": [
+    {"name": "SPI1", "sck": ["PA5", "PB3"], "mosi": ["PA7", "PB5"], "miso": ["PA6", "PB4"]},
+    {"name": "SPI2", "sck": ["PB13"], "mosi": ["PB15"], "miso": ["PB14"]}
+  ],
+  "notes": ["Firmware: STM32Cube or libopencm3 (C).", "PA11/PA12 are the USB D-/D+; PB3/PB4 (SPI1 remap) are JTAG pins until JTAG is disabled.", "Header order from stm32-base.org; which row is on which side: check against your board."]
+}

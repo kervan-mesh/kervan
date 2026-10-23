@@ -1,0 +1,35 @@
+{
+  "name": "esp32-devkitc-v4",
+  "version": 1,
+  "title": "ESP32-DevKitC V4 (38 pins)",
+  "description": "Espressif ESP32-DevKitC V4 with an ESP32-WROOM-32 (dual Xtensa LX6, 240 MHz), 520 KB SRAM, 4 MB flash; 38 pins (headers J2, J3).",
+  "chip": "ESP32",
+  "logic_v": 3.3,
+  "ram_kb": 520,
+  "flash_kb": 4096,
+  "clock_mhz": 240,
+  "supply_out_ma": 500,
+  "pins": {
+    "3v3": "3V3",
+    "gnd": "GND",
+    "spi_sck": "GPIO18 (VSPI SCK)",
+    "spi_mosi": "GPIO23 (VSPI MOSI)",
+    "spi_miso": "GPIO19 (VSPI MISO)",
+    "spi_cs": "GPIO5 (VSPI CS)"
+  },
+  "gpio": ["GPIO26", "GPIO27", "GPIO25", "GPIO32", "GPIO33", "GPIO4"],
+  "header": {
+    "top": "antenna",
+    "bottom": "USB",
+    "strips": [
+      {"name": "J2", "side": "left", "first": 1, "pins": ["3V3", "EN", {"name": "GPIO36", "label": "VP"}, {"name": "GPIO39", "label": "VN"}, {"name": "GPIO34", "label": "IO34"}, {"name": "GPIO35", "label": "IO35"}, {"name": "GPIO32", "label": "IO32"}, {"name": "GPIO33", "label": "IO33"}, {"name": "GPIO25", "label": "IO25"}, {"name": "GPIO26", "label": "IO26"}, {"name": "GPIO27", "label": "IO27"}, {"name": "GPIO14", "label": "IO14"}, {"name": "GPIO12", "label": "IO12"}, "GND", {"name": "GPIO13", "label": "IO13"}, {"name": "GPIO9", "label": "D2"}, {"name": "GPIO10", "label": "D3"}, {"name": "GPIO11", "label": "CMD"}, "5V"]},
+      {"name": "J3", "side": "right", "first": 1, "pins": ["GND", {"name": "GPIO23", "label": "IO23"}, {"name": "GPIO22", "label": "IO22"}, {"name": "GPIO1", "label": "TX"}, {"name": "GPIO3", "label": "RX"}, {"name": "GPIO21", "label": "IO21"}, "GND", {"name": "GPIO19", "label": "IO19"}, {"name": "GPIO18", "label": "IO18"}, {"name": "GPIO5", "label": "IO5"}, {"name": "GPIO17", "label": "IO17"}, {"name": "GPIO16", "label": "IO16"}, {"name": "GPIO4", "label": "IO4"}, {"name": "GPIO0", "label": "IO0"}, {"name": "GPIO2", "label": "IO2"}, {"name": "GPIO15", "label": "IO15"}, {"name": "GPIO8", "label": "D1"}, {"name": "GPIO7", "label": "D0"}, {"name": "GPIO6", "label": "CLK"}]}
+    ]
+  },
+  "io": ["GPIO0", "GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO12", "GPIO13", "GPIO14", "GPIO15", "GPIO16", "GPIO17", "GPIO18", "GPIO19", "GPIO21", "GPIO22", "GPIO23", "GPIO25", "GPIO26", "GPIO27", "GPIO32", "GPIO33", "GPIO34", "GPIO35", "GPIO36", "GPIO39"],
+  "input_only": ["GPIO34", "GPIO35", "GPIO36", "GPIO39"],
+  "spi": [
+    {"name": "VSPI", "sck": ["GPIO0", "GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO12", "GPIO13", "GPIO14", "GPIO15", "GPIO16", "GPIO17", "GPIO18", "GPIO19", "GPIO21", "GPIO22", "GPIO23", "GPIO25", "GPIO26", "GPIO27", "GPIO32", "GPIO33"], "mosi": ["GPIO0", "GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO12", "GPIO13", "GPIO14", "GPIO15", "GPIO16", "GPIO17", "GPIO18", "GPIO19", "GPIO21", "GPIO22", "GPIO23", "GPIO25", "GPIO26", "GPIO27", "GPIO32", "GPIO33"], "miso": ["GPIO0", "GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO12", "GPIO13", "GPIO14", "GPIO15", "GPIO16", "GPIO17", "GPIO18", "GPIO19", "GPIO21", "GPIO22", "GPIO23", "GPIO25", "GPIO26", "GPIO27", "GPIO32", "GPIO33", "GPIO34", "GPIO35", "GPIO36", "GPIO39"]}
+  ],
+  "notes": ["Firmware: ESP-IDF (C).", "GPIO34-39 are inputs only.", "Strapping pins GPIO0, 2, 12 and 15 decide the boot mode: keep them free if you can.", "GPIO6-11 (CLK, D0-D3, CMD) connect the flash: never use them.", "Source: Espressif ESP32-DevKitC V4 user guide (header blocks J2, J3)."]
+}

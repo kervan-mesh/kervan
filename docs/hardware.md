@@ -39,14 +39,19 @@ a low power step (`tx_power_dbm` 2 in the scenario) on the bench.
 
 ## Wiring and firmware
 
-In the Node tab, section Hardware, a node with **MCU + module** (Raspberry Pi Pico or Pico W with
-an nRF24 module) gets **Wiring & firmware**: the board's pin header and the module's header as seen
-from above, with a coloured wire per signal (⤢ opens a larger view).
+In the Node tab, section Hardware, a node with **MCU + module** gets **Wiring & firmware**: the
+board's pin headers and the module's pads as seen from above, with a coloured wire per signal (⤢
+opens a larger view). Every MCU board in the catalog with a header is drawn — Pico family, ESP32
+dev kits, Arduino Nano/Uno/Mega, STM32 Blue Pill and Nucleo-F401RE, Nordic DKs — with nRF24 and
+LoRa modules (RFM95W-style SX1276, Ebyte E32-900M30S). Firmware builds exist for the Pico family
+with nRF24 modules; the others get the drawing and pin choice for now.
 
 - **Choose pins** by clicking a module pin and then a pin of the board, or in the table. Only
-  pins that can work are offered: CE, CSN and IRQ go to any GPIO; SCK, MOSI and MISO must be on
-  one SPI controller (Pico: SPI0 on GP0–7 and GP16–22, SPI1 on GP8–15 and GP26–28) and follow
-  each other when you move one to the other controller; a pin that is taken swaps places. VCC and
+  pins that can work are offered: control pins go to any GPIO (signals the MCU drives not to
+  input-only pins such as the ESP32's GPIO34–39); SCK, MOSI and MISO must be on one SPI controller
+  (Pico: SPI0 on GP0–7 and GP16–22, SPI1 on GP8–15 and GP26–28; Arduino: fixed; ESP32, nRF: any
+  pin) and follow each other when you move one to the other controller; a pin that is taken swaps
+  places. VCC and
   GND stay on 3V3(OUT) and GND. The scenario keeps only what differs from the default:
   `"pins": {"CE": "GP15"}` on the node (no effect on the simulation). **Default pins** goes back.
 - **Build firmware** builds `firmware/pico_nrf24` for exactly these pins, in the dev container

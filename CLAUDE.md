@@ -175,6 +175,11 @@ every push/PR.
     (checked in `DeviceRegistry::wiring`), SVG drawing in the UI (`WiringDesigner`), firmware for
     those pins built in Docker by `ksim serve` (`hw::FirmwareBuilder`, `/api/firmware/*`,
     `ksim firmware`), open folder, flash to a Pico in BOOTSEL; boards report their `wiring`
+    Catalog now has 18 MCU boards with headers (Pico family, ESP32 kits incl. the user's DevKit
+    V1, Arduino Nano/Uno/Mega, Blue Pill, the user's Nucleo-F401RE, nRF52/52840/5340/7002 DKs;
+    header strips with gaps, labels, numbering) and the user's Ebyte E32-900M30S; pinouts from
+    vendor docs / Zephyr board files, noted per file. The user's E18-MS1PA2 (CC2530 Zigbee) waits
+    for an 802.15.4 PHY
   - [ ] 6c ← next: true HIL: firmware hands its frames to ksim over USB, ksim models the channel; real
     and virtual nodes in one network (µs collisions of nRF24 only approximate through USB; LoRa fine)
   - [ ] 6d: calibrate path loss, shadowing and the PA/LNA estimates from measurements

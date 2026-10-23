@@ -1,0 +1,35 @@
+{
+  "name": "nrf52-dk",
+  "version": 1,
+  "title": "Nordic nRF52 DK (nRF52832)",
+  "description": "Nordic nRF52 DK: nRF52832 (Cortex-M4F, 64 MHz), 64 KB RAM, 512 KB flash, Bluetooth LE. Arduino Uno R3 connectors drawn.",
+  "chip": "nRF52832",
+  "logic_v": 3.0,
+  "ram_kb": 64,
+  "flash_kb": 512,
+  "clock_mhz": 64,
+  "supply_out_ma": 0,
+  "pins": {
+    "3v3": "VDD",
+    "gnd": "GND",
+    "spi_sck": "P0.25 (D13)",
+    "spi_mosi": "P0.23 (D11)",
+    "spi_miso": "P0.24 (D12)",
+    "spi_cs": "P0.22 (D10)"
+  },
+  "gpio": ["P0.20", "P0.19", "P0.18", "P0.17", "P0.16", "P0.15"],
+  "header": {
+    "top": "USB",
+    "strips": [
+      {"name": "POWER", "side": "left", "pins": ["NC", "IOREF", "RESET", {"name": "VDD", "label": "3.3V"}, "5V", "GND", "GND", "VIN"]},
+      {"name": "ANALOG", "side": "left", "gap": 1, "pins": [{"name": "P0.03", "label": "A0"}, {"name": "P0.04", "label": "A1"}, {"name": "P0.28", "label": "A2"}, {"name": "P0.29", "label": "A3"}, {"name": "P0.30", "label": "A4"}, {"name": "P0.31", "label": "A5"}]},
+      {"name": "DIGITAL", "side": "right", "pins": [{"name": "P0.27", "label": "SCL"}, {"name": "P0.26", "label": "SDA"}, "AREF", "GND", {"name": "P0.25", "label": "D13"}, {"name": "P0.24", "label": "D12"}, {"name": "P0.23", "label": "D11"}, {"name": "P0.22", "label": "D10"}, {"name": "P0.20", "label": "D9"}, {"name": "P0.19", "label": "D8"}]},
+      {"name": "DIGITAL", "side": "right", "gap": 1, "pins": [{"name": "P0.18", "label": "D7"}, {"name": "P0.17", "label": "D6"}, {"name": "P0.16", "label": "D5"}, {"name": "P0.15", "label": "D4"}, {"name": "P0.14", "label": "D3"}, {"name": "P0.13", "label": "D2"}, {"name": "P0.12", "label": "D1"}, {"name": "P0.11", "label": "D0"}]}
+    ]
+  },
+  "io": ["P0.11", "P0.12", "P0.13", "P0.14", "P0.15", "P0.16", "P0.17", "P0.18", "P0.19", "P0.20", "P0.22", "P0.23", "P0.24", "P0.25", "P0.03", "P0.04", "P0.28", "P0.29", "P0.30", "P0.31", "P0.26", "P0.27"],
+  "spi": [
+    {"name": "SPIM", "sck": ["P0.11", "P0.12", "P0.13", "P0.14", "P0.15", "P0.16", "P0.17", "P0.18", "P0.19", "P0.20", "P0.22", "P0.23", "P0.24", "P0.25", "P0.03", "P0.04", "P0.28", "P0.29", "P0.30", "P0.31", "P0.26", "P0.27"], "mosi": ["P0.11", "P0.12", "P0.13", "P0.14", "P0.15", "P0.16", "P0.17", "P0.18", "P0.19", "P0.20", "P0.22", "P0.23", "P0.24", "P0.25", "P0.03", "P0.04", "P0.28", "P0.29", "P0.30", "P0.31", "P0.26", "P0.27"], "miso": ["P0.11", "P0.12", "P0.13", "P0.14", "P0.15", "P0.16", "P0.17", "P0.18", "P0.19", "P0.20", "P0.22", "P0.23", "P0.24", "P0.25", "P0.03", "P0.04", "P0.28", "P0.29", "P0.30", "P0.31", "P0.26", "P0.27"]}
+  ],
+  "notes": ["Firmware: nRF Connect SDK / Zephyr (C).", "Any GPIO can be SPI (pins are chosen in software).", "VDD is 3.0 V by default (3.3 V needs the VDD switch on the DK); the on-chip radio is not simulated yet.", "Arduino connector map from Zephyr's nrf52dk board files."]
+}

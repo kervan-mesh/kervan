@@ -26,8 +26,7 @@ void expect_error(Parse parse, const std::string &json, const std::string &needl
         parse(json, "test");
         ADD_FAILURE() << "no error for: " << json;
     } catch (const std::runtime_error &e) {
-        EXPECT_NE(std::string(e.what()).find(needle), std::string::npos)
-            << "message: " << e.what();
+        EXPECT_NE(std::string(e.what()).find(needle), std::string::npos) << "message: " << e.what();
     }
 }
 
@@ -67,8 +66,8 @@ TEST(Device, BuiltinCatalog)
         ASSERT_NE(reg.module(m), nullptr) << m;
         EXPECT_FALSE(reg.module(m)->pins.empty()) << m;
     }
-    EXPECT_EQ(reg.mcus().size(), 5u);
-    EXPECT_EQ(reg.modules().size(), 4u);
+    EXPECT_EQ(reg.mcus().size(), 18u);
+    EXPECT_EQ(reg.modules().size(), 5u);
     EXPECT_EQ(reg.board_profile("esp32-sx1276")->integrated, true);
 }
 
@@ -148,7 +147,7 @@ TEST(Device, Wiring)
 
     // the PA/LNA module needs more current than an Arduino Nano's 3.3 V pin gives
     w = reg.wiring("arduino-nano", "nrf24l01p-pa-lna");
-    EXPECT_TRUE(has(w.warnings, "own 3.3 V regulator"));
+    EXPECT_TRUE(has(w.warnings, "from its own supply"));
     EXPECT_FALSE(has(w.warnings, "level shifter")); // nRF24 inputs are 5 V tolerant
 
     // SX1276: 3.3 V logic only
@@ -168,23 +167,65 @@ TEST(Device, PinHeader)
     const DeviceRegistry reg = DeviceRegistry::builtin();
     const McuProfile &pico = *reg.mcu("rpi-pico");
     ASSERT_TRUE(pico.header.has_value());
-    EXPECT_EQ(pico.header->left.size(), 20u);
-    EXPECT_EQ(pico.pin_number("GP0"), 1);
-    EXPECT_EQ(pico.pin_number("GP15"), 20);
-    EXPECT_EQ(pico.pin_number("GP16"), 21);
-    EXPECT_EQ(pico.pin_number("3V3(OUT)"), 36);
-    EXPECT_EQ(pico.pin_number("VBUS"), 40);
-    EXPECT_EQ(pico.pin_number("GP23"), 0); // inside the board
+    ASSERT_EQ(pico.header->strips.size(), 2u);
+    const auto number = [&](const McuProfile &m, const std::string &pin) {
+        const auto at = m.find_pin(pin);
+        return at.first < 0 ? -1
+                            : m.header->strips[static_cast<size_t>(at.first)]
+                                  .pins[static_cast<size_t>(at.second)]
+                                  .number;
+    };
+    EXPECT_EQ(number(pico, "GP0"), 1);
+    EXPECT_EQ(number(pico, "GP15"), 20);
+    EXPECT_EQ(number(pico, "GP16"), 21);
+    EXPECT_EQ(number(pico, "3V3(OUT)"), 36);
+    EXPECT_EQ(number(pico, "VBUS"), 40);
+    EXPECT_EQ(number(pico, "GP23"), -1); // inside the board
+    EXPECT_TRUE(pico.is_io("GP28"));
+    EXPECT_FALSE(pico.is_io("GND"));
     ASSERT_EQ(pico.spi.size(), 2u);
     EXPECT_EQ(pico.spi[1].name, "SPI1");
     ASSERT_TRUE(pico.firmware.has_value());
     EXPECT_EQ(pico.firmware->board, "pico");
     EXPECT_EQ(reg.mcu("rpi-pico-w")->firmware->board, "pico_w");
-    EXPECT_FALSE(reg.mcu("esp32")->header.has_value());
+    EXPECT_EQ(reg.mcu("rpi-pico-2")->firmware->board, "pico2");
+    EXPECT_FALSE(reg.mcu("esp32")->header.has_value()); // the bare chip, for integrated boards
+
+    // GND appears several times: the one nearest to a place
+    const auto gnd = pico.find_pin("GND", pico.find_pin("3V3(OUT)"));
+    EXPECT_EQ(gnd, std::make_pair(1, 2)); // pin 38, next to 3V3(OUT)
+
+    // labels and numbers counting down (Arduino Nano: pin 1 is TX1, bottom right)
+    const McuProfile &nano = *reg.mcu("arduino-nano");
+    EXPECT_EQ(number(nano, "D1"), 1);
+    EXPECT_EQ(number(nano, "D13"), 16);
+    EXPECT_EQ(number(nano, "VIN"), 30);
+    const HeaderPin &tx = nano.header->strips[1].pins.back();
+    EXPECT_EQ(tx.name, "D1");
+    EXPECT_EQ(tx.label, "TX1");
+
+    // every catalog MCU with a header: its defaults and SPI pins are on it and wire up
+    for (const McuProfile *m : reg.mcus()) {
+        if (!m->header) {
+            continue;
+        }
+        EXPECT_FALSE(m->io.empty()) << m->name;
+        EXPECT_FALSE(m->spi.empty()) << m->name;
+        const Wiring w = reg.wiring(m->name, "nrf24l01p");
+        for (const WiringRow &r : w.rows) {
+            EXPECT_GE(r.mcu_strip, 0) << m->name << " " << r.module_pin << " -> " << r.mcu_name;
+        }
+        EXPECT_FALSE(w.spi.empty()) << m->name;
+    }
+
     const ModuleProfile &nrf = *reg.module("nrf24l01p");
     ASSERT_EQ(nrf.header.size(), 4u);
-    EXPECT_EQ(nrf.header[0][0], "GND");
-    EXPECT_EQ(nrf.header[3][1], "IRQ");
+    EXPECT_EQ(nrf.header[0][0].name, "GND");
+    EXPECT_EQ(nrf.header[3][1].name, "IRQ");
+    const ModuleProfile &rfm = *reg.module("sx1276");
+    EXPECT_EQ(rfm.header[3][1].name, "VCC");
+    EXPECT_EQ(rfm.header[3][1].label, "13 3.3V");
+    EXPECT_EQ(reg.module("e32-900m30s")->header.size(), 28u);
 }
 
 TEST(Device, ChosenPins)
@@ -231,35 +272,65 @@ TEST(Device, ChosenPins)
         }
         return std::string("no error");
     };
-    EXPECT_EQ(error({{"CE", "GP99"}}), "pins: GP99 is not a GPIO on the header of Raspberry Pi Pico");
-    EXPECT_EQ(error({{"CE", "VBUS"}}), "pins: VBUS is not a GPIO on the header of Raspberry Pi Pico");
+    EXPECT_EQ(error({{"CE", "GP99"}}),
+              "pins: GP99 is not a GPIO on the header of Raspberry Pi Pico");
+    EXPECT_EQ(error({{"CE", "VBUS"}}),
+              "pins: VBUS is not a GPIO on the header of Raspberry Pi Pico");
     EXPECT_EQ(error({{"CE", "GP17"}}), "pins: GP17 is wired to both CE and CSN");
     EXPECT_EQ(error({{"VCC", "GP3"}}), "pins: VCC always goes to 3.3 V");
     EXPECT_EQ(error({{"GND", "GP3"}}), "pins: GND always goes to GND");
     EXPECT_EQ(error({{"ANT", "GP3"}}), "pins: nRF24L01+ module (PCB antenna) has no pin 'ANT'");
     EXPECT_NE(error({{"SCK", "GP10"}}).find("must be on one SPI controller (SPI0: SCK GP2/GP6/"),
               std::string::npos);
-    EXPECT_EQ(error({{"CE", "GP15"}}, "arduino-nano"),
+    EXPECT_EQ(error({{"CE", "GP15"}}, "esp32"),
               "pins: choosing pins needs an MCU whose pin header is in the catalog");
+
+    // other boards: labelled pins, input-only pins, fixed SPI
+    w = reg.wiring("nucleo-f401re", "nrf24l01p", {{"CE", "PB10"}});
+    EXPECT_EQ(row(w, "CE").mcu_pin, "PB10 (D6) (CN9 pin 7)");
+    EXPECT_EQ(row(w, "SCK").mcu_pin, "PA5 (D13) / SPI1 SCK (CN5 pin 6)");
+    EXPECT_EQ(row(w, "VCC").mcu_pin, "3V3 (CN6 pin 4)");
+    EXPECT_EQ(row(w, "GND").mcu_pin, "GND (CN6 pin 6)");
+    EXPECT_EQ(error({{"CE", "GPIO34"}}, "esp32-devkit-v1"),
+              "pins: GPIO34 is an input only: it cannot drive CE");
+    w = reg.wiring("esp32-devkit-v1", "nrf24l01p", {{"IRQ", "GPIO34"}}); // an input is fine
+    EXPECT_EQ(row(w, "IRQ").mcu_pin, "GPIO34 (D34)");
+    EXPECT_NE(error({{"SCK", "D5"}}, "arduino-nano").find("SPI: SCK D13, MOSI D11, MISO D12"),
+              std::string::npos);
     EXPECT_EQ(error({}), "no error");
 }
 
 TEST(Device, HeaderParseErrors)
 {
-    expect_error(parse_mcu, R"({"name": "x", "header": {"left": ["A"], "right": []}})",
-                 "same length");
-    expect_error(parse_mcu, R"({"name": "x", "header": {"left": ["A"], "right": ["B"]},
-                                "spi": [{"name": "S", "sck": ["C"]}]})",
+    const std::string strip = R"({"side": "left", "pins": ["A", {"name": "B", "label": "b"}]})";
+    expect_error(parse_mcu, R"({"name": "x", "header": {"strips": []}})", "non-empty array");
+    expect_error(parse_mcu, R"({"name": "x", "header": {"strips": [{"side": "top", "pins": []}]}})",
+                 "\"left\", \"right\" or \"bottom\"");
+    expect_error(parse_mcu, R"({"name": "x", "header": {"strips": [{"side": "left"}]}})",
+                 "needs \"pins\"");
+    expect_error(
+        parse_mcu,
+        R"({"name": "x", "header": {"strips": [{"side": "left", "step": 2, "pins": []}]}})",
+        "must be 1 or -1");
+    expect_error(parse_mcu,
+                 R"({"name": "x", "header": {"strips": [{"side": "left", "pins": [5]}]}})",
+                 "pin names or");
+    expect_error(parse_mcu,
+                 R"({"name": "x", "header": {"strips": [)" + strip + R"(]}, "io": ["C"]})",
                  "C is not on the header");
+    expect_error(parse_mcu, R"({"name": "x", "io": ["A"]})", "A is not on the header");
+    expect_error(parse_mcu,
+                 R"({"name": "x", "header": {"strips": [)" + strip +
+                     R"(]}, "io": ["A"], "spi": [{"name": "S", "sck": ["B"]}]})",
+                 "B is not one of the GPIOs");
     expect_error(parse_mcu, R"({"name": "x", "spi": {}})", "must be an array");
     expect_error(parse_mcu, R"({"name": "x", "firmware": {"project": "p"}})",
                  "needs \"project\" and \"board\"");
-    expect_error(parse_module, R"({"name": "x", "radio": {"type": "lora"},
-                                   "pins": [{"name": "A", "role": "power"}],
-                                   "header": [["A", "B"]]})",
-                 "B is not one of the module's pins");
     expect_error(parse_module, R"({"name": "x", "radio": {"type": "lora"}, "header": 1})",
                  "rows of pin names");
+    expect_error(parse_module,
+                 R"({"name": "x", "radio": {"type": "lora"}, "header": [[{"label": "y"}]]})",
+                 "a pin needs a name");
 }
 
 TEST(Device, WiringWarnsAboutMissingPins)
@@ -298,8 +369,7 @@ TEST(Device, ParseErrors)
     expect_error(parse_module, R"({"name": "x", "radio": {"type": "lora"},
                                    "pins": [{"name": "A", "role": "magic"}]})",
                  "unknown role 'magic'");
-    expect_error(parse_module, R"({"name": "x", "radio": {"type": "lora"}, "pins": 5})",
-                 "array");
+    expect_error(parse_module, R"({"name": "x", "radio": {"type": "lora"}, "pins": 5})", "array");
     expect_error(parse_module, R"({"name": "x", "radio": {"type": "lora"}, "notes": [1]})",
                  "array of strings");
 

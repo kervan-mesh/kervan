@@ -24,5 +24,15 @@
     { "name": "RESET", "role": "gpio_out" },
     { "name": "DIO0", "role": "gpio_in" }
   ],
+  "header": [
+    [{"name": "GND", "label": "1 GND"}, {"name": "DIO2", "label": "16 DIO2"}],
+    [{"name": "MISO", "label": "2 MISO"}, {"name": "DIO1", "label": "15 DIO1"}],
+    [{"name": "MOSI", "label": "3 MOSI"}, {"name": "DIO0", "label": "14 DIO0"}],
+    [{"name": "SCK", "label": "4 SCK"}, {"name": "VCC", "label": "13 3.3V"}],
+    [{"name": "NSS", "label": "5 NSS"}, {"name": "DIO4", "label": "12 DIO4"}],
+    [{"name": "RESET", "label": "6 RESET"}, {"name": "DIO3", "label": "11 DIO3"}],
+    [{"name": "DIO5", "label": "7 DIO5"}, {"name": "GND", "label": "10 GND"}],
+    [{"name": "GND", "label": "8 GND"}, {"name": "ANT", "label": "9 ANT"}]
+  ],
   "notes": ["3.3 V logic only."]
 }

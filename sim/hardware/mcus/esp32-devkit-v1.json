@@ -1,0 +1,35 @@
+{
+  "name": "esp32-devkit-v1",
+  "version": 1,
+  "title": "ESP32 DevKit V1 (DOIT, 30 pins)",
+  "description": "DOIT ESP32 DevKit V1 with an ESP32-WROOM-32 (dual Xtensa LX6, 240 MHz), 520 KB SRAM, 4 MB flash; 30 pins. Pin order of the common DOIT layout: check it against your board's silkscreen.",
+  "chip": "ESP32",
+  "logic_v": 3.3,
+  "ram_kb": 520,
+  "flash_kb": 4096,
+  "clock_mhz": 240,
+  "supply_out_ma": 500,
+  "pins": {
+    "3v3": "3V3",
+    "gnd": "GND",
+    "spi_sck": "GPIO18 (VSPI SCK)",
+    "spi_mosi": "GPIO23 (VSPI MOSI)",
+    "spi_miso": "GPIO19 (VSPI MISO)",
+    "spi_cs": "GPIO5 (VSPI CS)"
+  },
+  "gpio": ["GPIO26", "GPIO27", "GPIO25", "GPIO32", "GPIO33", "GPIO4"],
+  "header": {
+    "top": "antenna",
+    "bottom": "USB",
+    "strips": [
+      {"side": "left", "pins": ["EN", {"name": "GPIO36", "label": "VP"}, {"name": "GPIO39", "label": "VN"}, {"name": "GPIO34", "label": "D34"}, {"name": "GPIO35", "label": "D35"}, {"name": "GPIO32", "label": "D32"}, {"name": "GPIO33", "label": "D33"}, {"name": "GPIO25", "label": "D25"}, {"name": "GPIO26", "label": "D26"}, {"name": "GPIO27", "label": "D27"}, {"name": "GPIO14", "label": "D14"}, {"name": "GPIO12", "label": "D12"}, {"name": "GPIO13", "label": "D13"}, "GND", "VIN"]},
+      {"side": "right", "pins": [{"name": "GPIO23", "label": "D23"}, {"name": "GPIO22", "label": "D22"}, {"name": "GPIO1", "label": "TX0"}, {"name": "GPIO3", "label": "RX0"}, {"name": "GPIO21", "label": "D21"}, {"name": "GPIO19", "label": "D19"}, {"name": "GPIO18", "label": "D18"}, {"name": "GPIO5", "label": "D5"}, {"name": "GPIO17", "label": "TX2"}, {"name": "GPIO16", "label": "RX2"}, {"name": "GPIO4", "label": "D4"}, {"name": "GPIO2", "label": "D2"}, {"name": "GPIO15", "label": "D15"}, "GND", "3V3"]}
+    ]
+  },
+  "io": ["GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO12", "GPIO13", "GPIO14", "GPIO15", "GPIO16", "GPIO17", "GPIO18", "GPIO19", "GPIO21", "GPIO22", "GPIO23", "GPIO25", "GPIO26", "GPIO27", "GPIO32", "GPIO33", "GPIO34", "GPIO35", "GPIO36", "GPIO39"],
+  "input_only": ["GPIO34", "GPIO35", "GPIO36", "GPIO39"],
+  "spi": [
+    {"name": "VSPI", "sck": ["GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO12", "GPIO13", "GPIO14", "GPIO15", "GPIO16", "GPIO17", "GPIO18", "GPIO19", "GPIO21", "GPIO22", "GPIO23", "GPIO25", "GPIO26", "GPIO27", "GPIO32", "GPIO33"], "mosi": ["GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO12", "GPIO13", "GPIO14", "GPIO15", "GPIO16", "GPIO17", "GPIO18", "GPIO19", "GPIO21", "GPIO22", "GPIO23", "GPIO25", "GPIO26", "GPIO27", "GPIO32", "GPIO33"], "miso": ["GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO12", "GPIO13", "GPIO14", "GPIO15", "GPIO16", "GPIO17", "GPIO18", "GPIO19", "GPIO21", "GPIO22", "GPIO23", "GPIO25", "GPIO26", "GPIO27", "GPIO32", "GPIO33", "GPIO34", "GPIO35", "GPIO36", "GPIO39"]}
+  ],
+  "notes": ["Firmware: ESP-IDF (C).", "GPIO34-39 are inputs only.", "Strapping pins GPIO0, 2, 12 and 15 decide the boot mode: keep them free if you can."]
+}

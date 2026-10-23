@@ -1,0 +1,34 @@
+{
+  "name": "esp32-c3-devkitm-1",
+  "version": 1,
+  "title": "ESP32-C3-DevKitM-1",
+  "description": "Espressif ESP32-C3-DevKitM-1 (RISC-V, 160 MHz), 400 KB SRAM, 4 MB flash; 30 pins (headers J1, J3).",
+  "chip": "ESP32-C3",
+  "logic_v": 3.3,
+  "ram_kb": 400,
+  "flash_kb": 4096,
+  "clock_mhz": 160,
+  "supply_out_ma": 500,
+  "pins": {
+    "3v3": "3V3",
+    "gnd": "GND",
+    "spi_sck": "GPIO6 (FSPI CLK)",
+    "spi_mosi": "GPIO7 (FSPI D)",
+    "spi_miso": "GPIO2 (FSPI Q)",
+    "spi_cs": "GPIO10 (FSPI CS0)"
+  },
+  "gpio": ["GPIO3", "GPIO4", "GPIO5", "GPIO1", "GPIO0", "GPIO18"],
+  "header": {
+    "top": "antenna",
+    "bottom": "USB",
+    "strips": [
+      {"name": "J1", "side": "left", "first": 1, "pins": ["GND", "3V3", "3V3", {"name": "GPIO2", "label": "IO2"}, {"name": "GPIO3", "label": "IO3"}, "GND", "RST", "GND", {"name": "GPIO0", "label": "IO0"}, {"name": "GPIO1", "label": "IO1"}, {"name": "GPIO10", "label": "IO10"}, "GND", "5V", "5V", "GND"]},
+      {"name": "J3", "side": "right", "first": 1, "pins": ["GND", {"name": "GPIO21", "label": "TX"}, {"name": "GPIO20", "label": "RX"}, "GND", {"name": "GPIO9", "label": "IO9"}, {"name": "GPIO8", "label": "IO8"}, "GND", {"name": "GPIO7", "label": "IO7"}, {"name": "GPIO6", "label": "IO6"}, {"name": "GPIO5", "label": "IO5"}, {"name": "GPIO4", "label": "IO4"}, "GND", {"name": "GPIO18", "label": "IO18"}, {"name": "GPIO19", "label": "IO19"}, "GND"]}
+    ]
+  },
+  "io": ["GPIO0", "GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO6", "GPIO7", "GPIO8", "GPIO9", "GPIO10", "GPIO18", "GPIO19", "GPIO20", "GPIO21"],
+  "spi": [
+    {"name": "FSPI", "sck": ["GPIO0", "GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO6", "GPIO7", "GPIO8", "GPIO9", "GPIO10", "GPIO18", "GPIO19", "GPIO20", "GPIO21"], "mosi": ["GPIO0", "GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO6", "GPIO7", "GPIO8", "GPIO9", "GPIO10", "GPIO18", "GPIO19", "GPIO20", "GPIO21"], "miso": ["GPIO0", "GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO6", "GPIO7", "GPIO8", "GPIO9", "GPIO10", "GPIO18", "GPIO19", "GPIO20", "GPIO21"]}
+  ],
+  "notes": ["Firmware: ESP-IDF (C).", "GPIO2, 8 and 9 are strapping pins; GPIO18/19 are the USB D-/D+.", "Source: Espressif ESP32-C3-DevKitM-1 user guide (header blocks J1, J3)."]
+}

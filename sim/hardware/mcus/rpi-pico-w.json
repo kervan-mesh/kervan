@@ -17,12 +17,15 @@
     "spi_miso": "GP16 / SPI0 RX (pin 21)",
     "spi_cs": "GP17 / SPI0 CSn (pin 22)"
   },
-  "gpio": ["GP20 (pin 26)", "GP21 (pin 27)", "GP22 (pin 29)"],
+  "gpio": ["GP20 (pin 26)", "GP21 (pin 27)", "GP22 (pin 29)", "GP26 (pin 31)", "GP27 (pin 32)", "GP28 (pin 34)"],
   "header": {
-    "left": ["GP0", "GP1", "GND", "GP2", "GP3", "GP4", "GP5", "GND", "GP6", "GP7", "GP8", "GP9", "GND", "GP10", "GP11", "GP12", "GP13", "GND", "GP14", "GP15"],
-    "right": ["VBUS", "VSYS", "GND", "3V3_EN", "3V3(OUT)", "ADC_VREF", "GP28", "AGND", "GP27", "GP26", "RUN", "GP22", "GND", "GP21", "GP20", "GP19", "GP18", "GND", "GP17", "GP16"],
-    "top": "USB"
+    "top": "USB",
+    "strips": [
+      {"side": "left", "first": 1, "pins": ["GP0", "GP1", "GND", "GP2", "GP3", "GP4", "GP5", "GND", "GP6", "GP7", "GP8", "GP9", "GND", "GP10", "GP11", "GP12", "GP13", "GND", "GP14", "GP15"]},
+      {"side": "right", "first": 40, "step": -1, "pins": ["VBUS", "VSYS", "GND", "3V3_EN", "3V3(OUT)", "ADC_VREF", "GP28", "AGND", "GP27", "GP26", "RUN", "GP22", "GND", "GP21", "GP20", "GP19", "GP18", "GND", "GP17", "GP16"]}
+    ]
   },
+  "io": ["GP0", "GP1", "GP2", "GP3", "GP4", "GP5", "GP6", "GP7", "GP8", "GP9", "GP10", "GP11", "GP12", "GP13", "GP14", "GP15", "GP16", "GP17", "GP18", "GP19", "GP20", "GP21", "GP22", "GP26", "GP27", "GP28"],
   "spi": [
     {"name": "SPI0", "sck": ["GP2", "GP6", "GP18", "GP22"], "mosi": ["GP3", "GP7", "GP19"], "miso": ["GP0", "GP4", "GP16"]},
     {"name": "SPI1", "sck": ["GP10", "GP14", "GP26"], "mosi": ["GP11", "GP15", "GP27"], "miso": ["GP8", "GP12", "GP28"]}

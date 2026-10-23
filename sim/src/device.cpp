@@ -75,6 +75,35 @@ std::vector<std::string> strings_of(const json &a, const std::string &where)
     return out;
 }
 
+// Header pins: "GND" or {"name": "PA5", "label": "D13"}.
+std::vector<HeaderPin> header_pins(const json &a, const std::string &where)
+{
+    if (!a.is_array()) {
+        fail(where, "must be an array of pin names or {\"name\", \"label\"}");
+    }
+    std::vector<HeaderPin> out;
+    for (const json &v : a) {
+        HeaderPin p;
+        if (v.is_string()) {
+            p.name = v.get<std::string>();
+        } else if (v.is_object()) {
+            check_object(v, {"name", "label"}, where);
+            p.name = get_string(v, "name", "", where);
+            p.label = get_string(v, "label", "", where);
+        } else {
+            fail(where, "must be an array of pin names or {\"name\", \"label\"}");
+        }
+        if (p.name.empty()) {
+            fail(where, "a pin needs a name");
+        }
+        if (p.label.empty()) {
+            p.label = p.name;
+        }
+        out.push_back(p);
+    }
+    return out;
+}
+
 std::vector<std::string> string_list(const json &obj, const char *key, const std::string &where)
 {
     return obj.contains(key) ? strings_of(obj.at(key), where + "." + key)
@@ -142,8 +171,8 @@ McuProfile parse_mcu(const std::string &json_text, const std::string &where)
     const json j = parse_json(json_text, where);
     check_object(j,
                  {"name", "version", "title", "description", "chip", "logic_v", "ram_kb",
-                  "flash_kb", "clock_mhz", "supply_out_ma", "pins", "gpio", "header", "spi",
-                  "firmware", "notes"},
+                  "flash_kb", "clock_mhz", "supply_out_ma", "pins", "gpio", "header", "io",
+                  "input_only", "spi", "firmware", "notes"},
                  where);
     McuProfile m;
     std::string at;
@@ -164,15 +193,48 @@ McuProfile parse_mcu(const std::string &json_text, const std::string &where)
     m.gpio = string_list(j, "gpio", at);
     if (j.contains("header")) {
         const json &h = j.at("header");
-        check_object(h, {"left", "right", "top"}, at + ".header");
+        check_object(h, {"top", "bottom", "strips"}, at + ".header");
         McuHeader header;
-        header.left = string_list(h, "left", at + ".header");
-        header.right = string_list(h, "right", at + ".header");
         header.top = get_string(h, "top", "", at + ".header");
-        if (header.left.empty() || header.left.size() != header.right.size()) {
-            fail(at + ".header", "needs \"left\" and \"right\" rows of the same length");
+        header.bottom = get_string(h, "bottom", "", at + ".header");
+        if (!h.contains("strips") || !h.at("strips").is_array() || h.at("strips").empty()) {
+            fail(at + ".header.strips", "must be a non-empty array of pin rows");
+        }
+        for (const json &js : h.at("strips")) {
+            const std::string w = at + ".header.strips";
+            check_object(js, {"name", "side", "gap", "first", "step", "pins"}, w);
+            HeaderStrip strip;
+            strip.name = get_string(js, "name", "", w);
+            strip.side = get_string(js, "side", "", w);
+            if (strip.side != "left" && strip.side != "right" && strip.side != "bottom") {
+                fail(w + ".side", "must be \"left\", \"right\" or \"bottom\"");
+            }
+            strip.gap = get_int(js, "gap", 0, w);
+            const int first = get_int(js, "first", 0, w); // 0: not numbered
+            const double step_d = get_double(js, "step", 1.0, w); // -1: numbers count down
+            if (step_d != 1.0 && step_d != -1.0) {
+                fail(w + ".step", "must be 1 or -1");
+            }
+            const int step = step_d > 0 ? 1 : -1;
+            if (!js.contains("pins")) {
+                fail(w, "needs \"pins\"");
+            }
+            strip.pins = header_pins(js.at("pins"), w + ".pins");
+            for (size_t i = 0; i < strip.pins.size(); i++) {
+                strip.pins[i].number = first == 0 ? 0 : first + step * static_cast<int>(i);
+            }
+            header.strips.push_back(strip);
         }
         m.header = header;
+    }
+    m.io = string_list(j, "io", at);
+    m.input_only = string_list(j, "input_only", at);
+    for (const auto *list : {&m.io, &m.input_only}) {
+        for (const std::string &pin : *list) {
+            if (!m.header || m.find_pin(pin).first < 0) {
+                fail(at + ".io", pin + " is not on the header");
+            }
+        }
     }
     if (j.contains("spi")) {
         if (!j.at("spi").is_array()) {
@@ -187,8 +249,8 @@ McuProfile parse_mcu(const std::string &json_text, const std::string &where)
             bus.miso = string_list(b, "miso", at + ".spi");
             for (const auto *list : {&bus.sck, &bus.mosi, &bus.miso}) {
                 for (const std::string &pin : *list) {
-                    if (m.header && m.pin_number(pin) == 0) {
-                        fail(at + ".spi", pin + " is not on the header");
+                    if (m.header && !m.is_io(pin)) {
+                        fail(at + ".spi", pin + " is not one of the GPIOs in \"io\"");
                     }
                 }
             }
@@ -208,23 +270,38 @@ McuProfile parse_mcu(const std::string &json_text, const std::string &where)
     return m;
 }
 
-int McuProfile::pin_number(const std::string &pin) const
+std::pair<int, int> McuProfile::find_pin(const std::string &pin, std::pair<int, int> near) const
 {
+    std::pair<int, int> best{-1, -1};
     if (!header) {
-        return 0;
+        return best;
     }
-    const int n = static_cast<int>(header->left.size());
-    for (int i = 0; i < n; i++) {
-        if (header->left[static_cast<size_t>(i)] == pin) {
-            return i + 1;
+    long best_distance = 0;
+    for (size_t k = 0; k < header->strips.size(); k++) {
+        const HeaderStrip &strip = header->strips[k];
+        for (size_t i = 0; i < strip.pins.size(); i++) {
+            if (strip.pins[i].name != pin) {
+                continue;
+            }
+            const auto here = std::make_pair(static_cast<int>(k), static_cast<int>(i));
+            if (near.first < 0) {
+                return here;
+            }
+            // closest: same strip first, then fewest positions apart
+            const long d = (here.first == near.first ? 0 : 1000) +
+                           std::labs(static_cast<long>(here.second - near.second));
+            if (best.first < 0 || d < best_distance) {
+                best = here;
+                best_distance = d;
+            }
         }
     }
-    for (int i = 0; i < n; i++) {
-        if (header->right[static_cast<size_t>(i)] == pin) {
-            return 2 * n - i;
-        }
-    }
-    return 0;
+    return best;
+}
+
+bool McuProfile::is_io(const std::string &pin) const
+{
+    return std::find(io.begin(), io.end(), pin) != io.end();
 }
 
 ModuleProfile parse_module(const std::string &json_text, const std::string &where)
@@ -296,14 +373,7 @@ ModuleProfile parse_module(const std::string &json_text, const std::string &wher
             fail(at + ".header", "must be rows of pin names");
         }
         for (size_t r = 0; r < h.size(); r++) {
-            m.header.push_back(strings_of(h.at(r), at + ".header"));
-            for (const std::string &name : m.header.back()) {
-                const bool known = std::any_of(m.pins.begin(), m.pins.end(),
-                                               [&](const ModulePin &p) { return p.name == name; });
-                if (!known) {
-                    fail(at + ".header", name + " is not one of the module's pins");
-                }
-            }
+            m.header.push_back(header_pins(h.at(r), at + ".header"));
         }
     }
     m.notes = string_list(j, "notes", at);
@@ -504,12 +574,6 @@ int pin_in_text(const std::string &s)
     return at == std::string::npos ? 0 : std::atoi(s.c_str() + at + 5);
 }
 
-bool is_gpio(const std::string &name)
-{
-    return name.size() > 2 && name.compare(0, 2, "GP") == 0 &&
-           name.find_first_not_of("0123456789", 2) == std::string::npos;
-}
-
 [[noreturn]] void bad_pins(const std::string &msg)
 {
     throw std::runtime_error("pins: " + msg);
@@ -552,8 +616,14 @@ Wiring DeviceRegistry::wiring(const std::string &mcu_name, const std::string &mo
         if (it->role == "power" || it->role == "gnd") {
             bad_pins(pin + " always goes to " + (it->role == "power" ? "3.3 V" : "GND"));
         }
-        if (!is_gpio(to) || u->pin_number(to) == 0) {
+        if (!u->is_io(to)) {
             bad_pins(to + " is not a GPIO on the header of " + u->title);
+        }
+        const bool drives = it->role == "gpio_out" || it->role == "spi_sck" ||
+                            it->role == "spi_mosi" || it->role == "spi_cs";
+        if (drives && std::find(u->input_only.begin(), u->input_only.end(), to) !=
+                          u->input_only.end()) {
+            bad_pins(to + " is an input only: it cannot drive " + pin);
         }
     }
     const auto chosen_elsewhere = [&](const std::string &gpio) {
@@ -563,7 +633,7 @@ Wiring DeviceRegistry::wiring(const std::string &mcu_name, const std::string &mo
 
     size_t next_gpio = 0;
     for (const ModulePin &pin : m.pins) {
-        WiringRow row{pin.name, "", pin.role, "", 0};
+        WiringRow row{pin.name, "", pin.role, "", 0, -1, -1};
         if (u != nullptr) {
             std::string text; // the catalog's description of a default pin
             if (const auto c = choice.find(pin.name); c != choice.end()) {
@@ -600,9 +670,6 @@ Wiring DeviceRegistry::wiring(const std::string &mcu_name, const std::string &mo
                 row.mcu_number = pin_in_text(text);
                 row.mcu_pin = text;
             }
-            if (row.mcu_number == 0 && !row.mcu_name.empty()) {
-                row.mcu_number = u->pin_number(row.mcu_name);
-            }
             if (row.mcu_name.empty() && pin.role != "gpio_in_optional") {
                 w.warnings.push_back(u->title + " has no pin listed for " + pin.name + " (" +
                                      pin.role + ")");
@@ -617,7 +684,7 @@ Wiring DeviceRegistry::wiring(const std::string &mcu_name, const std::string &mo
             for (size_t k = i + 1; k < w.rows.size(); k++) {
                 const WiringRow &a = w.rows[i];
                 const WiringRow &b = w.rows[k];
-                if (!a.mcu_name.empty() && a.mcu_name == b.mcu_name && is_gpio(a.mcu_name)) {
+                if (!a.mcu_name.empty() && a.mcu_name == b.mcu_name && u->is_io(a.mcu_name)) {
                     bad_pins(a.mcu_name + " is wired to both " + a.module_pin + " and " +
                              b.module_pin);
                 }
@@ -654,16 +721,62 @@ Wiring DeviceRegistry::wiring(const std::string &mcu_name, const std::string &mo
                          join(options, "; ") + ")");
             }
         }
-        // describe every pin the same way: "GP10 / SPI1 SCK (pin 14)"
+        // where each pin is; supply pins that appear several times: the listed number, else
+        // the one next to the supply pin (GND beside 3V3)
+        std::pair<int, int> supply{-1, -1};
+        for (int pass = 0; pass < 2; pass++) {
+            for (WiringRow &r : w.rows) {
+                const bool is_supply = r.role == "power";
+                if (r.mcu_name.empty() || (pass == 0) != is_supply) {
+                    continue;
+                }
+                std::pair<int, int> at{-1, -1};
+                for (size_t k = 0; k < u->header->strips.size() && r.mcu_number > 0; k++) {
+                    const auto &pins = u->header->strips[k].pins;
+                    for (size_t i = 0; i < pins.size(); i++) {
+                        if (pins[i].name == r.mcu_name && pins[i].number == r.mcu_number) {
+                            at = {static_cast<int>(k), static_cast<int>(i)};
+                        }
+                    }
+                }
+                if (at.first < 0) {
+                    at = u->find_pin(r.mcu_name, r.role == "gnd" ? supply : std::pair{-1, -1});
+                }
+                if (at.first < 0) {
+                    continue;
+                }
+                r.mcu_strip = at.first;
+                r.mcu_index = at.second;
+                if (is_supply) {
+                    supply = at;
+                }
+            }
+        }
+        // describe every pin the same way: "GP10 / SPI1 SCK (pin 14)", "PA5 (D13) (CN5 pin 6)"
         for (WiringRow &r : w.rows) {
-            if (r.mcu_name.empty() || r.role == "power" || r.role == "gnd") {
+            if (r.mcu_strip < 0) {
                 continue;
             }
-            std::string what;
-            if (r.role == "spi_sck" || r.role == "spi_mosi" || r.role == "spi_miso") {
-                what = " / " + w.spi + " " + r.module_pin;
+            const HeaderStrip &strip = u->header->strips[static_cast<size_t>(r.mcu_strip)];
+            const HeaderPin &hp = strip.pins[static_cast<size_t>(r.mcu_index)];
+            r.mcu_number = hp.number;
+            std::string text = hp.name;
+            if (hp.label != hp.name) {
+                text += " (" + hp.label + ")";
             }
-            r.mcu_pin = r.mcu_name + what + " (pin " + std::to_string(r.mcu_number) + ")";
+            if (r.role == "spi_sck" || r.role == "spi_mosi" || r.role == "spi_miso") {
+                text += " / " + w.spi + (r.role == "spi_sck"    ? " SCK"
+                                           : r.role == "spi_mosi" ? " MOSI"
+                                                                  : " MISO");
+            }
+            std::string where = strip.name;
+            if (hp.number > 0) {
+                where += (where.empty() ? "pin " : " pin ") + std::to_string(hp.number);
+            }
+            if (!where.empty()) {
+                text += " (" + where + ")";
+            }
+            r.mcu_pin = text;
         }
     }
     if (u == nullptr) {
@@ -682,7 +795,7 @@ Wiring DeviceRegistry::wiring(const std::string &mcu_name, const std::string &mo
     if (u->supply_out_ma > 0 && peak > u->supply_out_ma) {
         w.warnings.push_back(m.title + " draws up to " + fmt(peak) + " mA but the 3.3 V pin of " +
                              u->title + " supplies about " + std::to_string(u->supply_out_ma) +
-                             " mA: power the module from its own 3.3 V regulator");
+                             " mA: power the module from its own supply");
     }
     return w;
 }

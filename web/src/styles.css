@@ -794,6 +794,16 @@ input.payload-text {
   font-weight: 700;
 }
 
+.wd-edge {
+  fill: #1b1f24;
+  font: 600 8px system-ui, sans-serif;
+}
+
+.wd-strip {
+  fill: #9be9a8;
+  font: 600 8px system-ui, sans-serif;
+}
+
 .wd-small {
   fill: var(--muted);
   font: 8px system-ui, sans-serif;

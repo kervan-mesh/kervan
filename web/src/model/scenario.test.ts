@@ -82,6 +82,8 @@ const devices: Hardware = {
       clock_mhz: 16,
       supply_out_ma: 50,
       header: null,
+      io: [],
+      input_only: [],
       spi: [],
       firmware: null,
       notes: [],

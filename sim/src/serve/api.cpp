@@ -152,16 +152,32 @@ json limits_json(const std::vector<double> &levels, const std::optional<Range> &
     return limits;
 }
 
+json pins_json(const std::vector<HeaderPin> &pins)
+{
+    json out = json::array();
+    for (const HeaderPin &p : pins) {
+        out.push_back({{"name", p.name}, {"label", p.label}, {"number", p.number}});
+    }
+    return out;
+}
+
 json mcu_json(const McuProfile &m)
 {
     json j{{"name", m.name},         {"version", m.version},   {"title", m.title},
            {"description", m.description}, {"chip", m.chip},   {"logic_v", m.logic_v},
            {"ram_kb", m.ram_kb},     {"flash_kb", m.flash_kb}, {"clock_mhz", m.clock_mhz},
            {"supply_out_ma", m.supply_out_ma}, {"notes", m.notes}};
-    j["header"] = m.header ? json{{"left", m.header->left},
-                                  {"right", m.header->right},
-                                  {"top", m.header->top}}
-                           : json(nullptr);
+    j["header"] = nullptr;
+    if (m.header) {
+        json strips = json::array();
+        for (const HeaderStrip &s : m.header->strips) {
+            strips.push_back(
+                {{"name", s.name}, {"side", s.side}, {"gap", s.gap}, {"pins", pins_json(s.pins)}});
+        }
+        j["header"] = {{"top", m.header->top}, {"bottom", m.header->bottom}, {"strips", strips}};
+    }
+    j["io"] = m.io;
+    j["input_only"] = m.input_only;
     json spi = json::array();
     for (const SpiBus &b : m.spi) {
         spi.push_back({{"name", b.name}, {"sck", b.sck}, {"mosi", b.mosi}, {"miso", b.miso}});
@@ -190,8 +206,11 @@ json module_json(const ModuleProfile &m)
            {"lna_db", m.radio.lna_db},
            {"current_ma", {{"tx", m.tx_ma}, {"rx", m.rx_ma}}},
            {"pins", pins},
-           {"header", m.header},
+           {"header", json::array()},
            {"notes", m.notes}};
+    for (const auto &row : m.header) {
+        j["header"].push_back(pins_json(row));
+    }
     j["supply_v"] = m.supply_v ? range_json(*m.supply_v) : json(nullptr);
     return j;
 }
@@ -217,7 +236,9 @@ json wiring_json(const Wiring &w)
                         {"mcu_pin", r.mcu_pin},
                         {"role", r.role},
                         {"mcu_name", r.mcu_name},
-                        {"mcu_number", r.mcu_number}});
+                        {"mcu_number", r.mcu_number},
+                        {"mcu_strip", r.mcu_strip},
+                        {"mcu_index", r.mcu_index}});
     }
     return {{"integrated", w.integrated},
             {"spi", w.spi},

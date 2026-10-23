@@ -138,8 +138,8 @@ TEST(ServeApi, Catalogs)
         }
     }
     EXPECT_TRUE(found);
-    EXPECT_EQ(hw.at("mcus").size(), 5u);
-    ASSERT_EQ(hw.at("modules").size(), 4u);
+    EXPECT_EQ(hw.at("mcus").size(), 18u);
+    ASSERT_EQ(hw.at("modules").size(), 5u);
     for (const json &m : hw.at("modules")) {
         if (m.at("name") == "nrf24l01p-pa-lna") {
             EXPECT_EQ(m.at("antenna_dbi"), 2);

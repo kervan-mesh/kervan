@@ -22,13 +22,28 @@ struct Range {
     double max = 0.0;
 };
 
-// The pin header of an MCU board as seen from above (for drawings and pin choices): two rows,
-// `top` names what is at the top edge (e.g. "USB"). Physical pin numbers run down the left row
-// (1..N) and up the right row (N+1..2N), so right[0] is pin 2N.
+// One pin of a pin header.
+struct HeaderPin {
+    std::string name;  // what the MCU calls it, as "pins" and firmware use it: "GP15", "PA5"
+    std::string label; // printed on the board: "D13" (= name when the same)
+    int number = 0;    // its number on the connector, 0 if not numbered
+};
+
+// A row of header pins: down the left or right edge (top to bottom), or along the bottom edge
+// (left to right; several bottom strips stack downwards). `gap` leaves empty positions before it.
+struct HeaderStrip {
+    std::string name; // connector, e.g. "J2", "CN5"; may be empty
+    std::string side; // "left", "right", "bottom"
+    int gap = 0;
+    std::vector<HeaderPin> pins;
+};
+
+// The pin headers of an MCU board as seen from above, for drawings and pin choices. `top` and
+// `bottom` name what sits at those edges ("USB", "antenna").
 struct McuHeader {
-    std::vector<std::string> left;
-    std::vector<std::string> right;
     std::string top;
+    std::string bottom;
+    std::vector<HeaderStrip> strips;
 };
 
 // The pins one SPI controller can use.
@@ -57,12 +72,16 @@ struct McuProfile {
     std::map<std::string, std::string> pins; // 3v3, gnd, spi_sck, spi_mosi, spi_miso, spi_cs
     std::vector<std::string> gpio;           // free GPIOs, in the order wiring uses them
     std::optional<McuHeader> header;         // set: pins can be chosen (Node "pins")
+    std::vector<std::string> io;             // header pins that are GPIOs, the choices
+    std::vector<std::string> input_only;     // of those, the ones that cannot drive a signal
     std::vector<SpiBus> spi;
     std::optional<FirmwareTarget> firmware;
     std::vector<std::string> notes;
 
-    // Physical pin number of a header pin name, 0 if it is not on the header.
-    int pin_number(const std::string &pin) const;
+    // Where a header pin is: strip and index, or {-1, -1}. With `near`, the occurrence closest
+    // to that place (for pins that appear several times, such as GND).
+    std::pair<int, int> find_pin(const std::string &pin, std::pair<int, int> near = {-1, -1}) const;
+    bool is_io(const std::string &pin) const;
 };
 
 struct ModulePin {
@@ -86,7 +105,8 @@ struct ModuleProfile {
     double tx_ma = 0.0;
     double rx_ma = 0.0;
     std::vector<ModulePin> pins;
-    std::vector<std::vector<std::string>> header; // pin names row by row, for drawings
+    std::vector<std::vector<HeaderPin>> header; // the pads row by row, for drawings (pins not
+                                                // listed in `pins`, such as ANT, stay unwired)
     std::vector<std::string> notes;
 };
 
@@ -126,7 +146,9 @@ struct WiringRow {
     std::string mcu_pin;  // as a person reads it: "GP18 / SPI0 SCK (pin 24)"
     std::string role;
     std::string mcu_name; // the header pin: "GP18" ("" if not connected)
-    int mcu_number = 0;   // its physical pin number, 0 if unknown
+    int mcu_number = 0;   // its number on its connector, 0 if unknown
+    int mcu_strip = -1;   // where it is on the MCU's header (McuHeader::strips), -1 if unknown
+    int mcu_index = -1;
 };
 
 // Module pin -> MCU header pin, e.g. {"CE": "GP15"}; pins not named keep the default wiring.

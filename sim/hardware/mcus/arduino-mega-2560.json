@@ -1,0 +1,39 @@
+{
+  "name": "arduino-mega-2560",
+  "version": 1,
+  "title": "Arduino Mega 2560",
+  "description": "ATmega2560, 8 KB SRAM, 256 KB flash, 16 MHz, 5 V logic. Drawn turned so that the USB and power jacks are at the top; the double header D22-D53 is at the bottom.",
+  "chip": "ATmega2560",
+  "logic_v": 5.0,
+  "ram_kb": 8,
+  "flash_kb": 256,
+  "clock_mhz": 16,
+  "supply_out_ma": 150,
+  "pins": {
+    "3v3": "3V3",
+    "gnd": "GND",
+    "spi_sck": "D52 (SCK)",
+    "spi_mosi": "D51 (MOSI)",
+    "spi_miso": "D50 (MISO)",
+    "spi_cs": "D53 (SS)"
+  },
+  "gpio": ["D49", "D2", "D3", "D48", "D47", "D46"],
+  "header": {
+    "top": "USB",
+    "strips": [
+      {"name": "POWER", "side": "left", "pins": ["NC", "IOREF", "RESET", "3V3", "5V", "GND", "GND", "VIN"]},
+      {"name": "ANALOG IN", "side": "left", "gap": 1, "pins": ["A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7"]},
+      {"name": "ANALOG IN", "side": "left", "gap": 1, "pins": ["A8", "A9", "A10", "A11", "A12", "A13", "A14", "A15"]},
+      {"name": "PWM", "side": "right", "pins": ["SCL", "SDA", "AREF", "GND", "D13", "D12", "D11", "D10", "D9", "D8"]},
+      {"name": "PWM", "side": "right", "gap": 1, "pins": ["D7", "D6", "D5", "D4", "D3", "D2", {"name": "D1", "label": "TX0→1"}, {"name": "D0", "label": "RX0←0"}]},
+      {"name": "COMMUNICATION", "side": "right", "gap": 1, "pins": [{"name": "D14", "label": "TX3 14"}, {"name": "D15", "label": "RX3 15"}, {"name": "D16", "label": "TX2 16"}, {"name": "D17", "label": "RX2 17"}, {"name": "D18", "label": "TX1 18"}, {"name": "D19", "label": "RX1 19"}, {"name": "D20", "label": "SDA 20"}, {"name": "D21", "label": "SCL 21"}]},
+      {"name": "DIGITAL", "side": "bottom", "pins": ["5V", "D22", "D24", "D26", "D28", "D30", "D32", "D34", "D36", "D38", "D40", "D42", "D44", "D46", "D48", "D50", "D52", "GND"]},
+      {"name": "DIGITAL", "side": "bottom", "pins": ["5V", "D23", "D25", "D27", "D29", "D31", "D33", "D35", "D37", "D39", "D41", "D43", "D45", "D47", "D49", "D51", "D53", "GND"]}
+    ]
+  },
+  "io": ["D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10", "D11", "D12", "D13", "D14", "D15", "D16", "D17", "D18", "D19", "D20", "D21", "D22", "D23", "D24", "D25", "D26", "D27", "D28", "D29", "D30", "D31", "D32", "D33", "D34", "D35", "D36", "D37", "D38", "D39", "D40", "D41", "D42", "D43", "D44", "D45", "D46", "D47", "D48", "D49", "D50", "D51", "D52", "D53", "A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12", "A13", "A14", "A15"],
+  "spi": [
+    {"name": "SPI", "sck": ["D52"], "mosi": ["D51"], "miso": ["D50"]}
+  ],
+  "notes": ["Firmware: Arduino (AVR C++).", "5 V logic: modules with 3.3 V inputs need level shifters.", "Hardware SPI is fixed to these pins.", "The 3.3V pin gives about 150 mA.", "The order of the D22-D53 double header is drawn from the board layout: check it against your board."]
+}
