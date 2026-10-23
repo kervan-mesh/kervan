@@ -91,9 +91,9 @@ std::string kervan_pair(const std::string &node1_extra, const std::string &confi
 std::string esb_pair(const std::string &node2_extra, const std::string &rx_config = "")
 {
     return R"({"duration_s": 10, "nodes": [
-        {"id": 1, "pos": [0, 0], "device": "arduino-nrf24l01p", "stack": "nrf24-esb",
+        {"id": 1, "pos": [0, 0], "device": "pico-nrf24l01p", "stack": "nrf24-esb",
          "config": {)" + rx_config + R"(}},
-        {"id": 2, "pos": [5, 0], "device": "arduino-nrf24l01p", "stack": "nrf24-esb",
+        {"id": 2, "pos": [5, 0], "device": "pico-nrf24l01p", "stack": "nrf24-esb",
          "config": {"send_to": "0xE7E7E7E701", "send_every_ms": 2000, "listen": 0})" +
            node2_extra + R"(}]})";
 }

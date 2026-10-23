@@ -31,5 +31,6 @@
   "spi": [
     {"name": "SPI1", "sck": ["PA5", "PB3"], "mosi": ["PA7", "PB5"], "miso": ["PA6", "PB4"]}
   ],
-  "notes": ["Firmware: STM32Cube or Zephyr (C).", "D0/D1 (PA3/PA2) carry the ST-LINK serial port and are not offered.", "Arduino connector map from Zephyr's nucleo_f401re board files (UM1724)."]
+  "firmware": {"project": "zephyr_nrf24", "board": "nucleo_f401re", "pinctrl": "stm32", "output": "bin", "flash": "drive"},
+  "notes": ["Firmware: Zephyr (C), board nucleo_f401re.", "D0/D1 (PA3/PA2) carry the ST-LINK serial port and are not offered.", "Arduino connector map from Zephyr's nucleo_f401re board files (UM1724)."]
 }

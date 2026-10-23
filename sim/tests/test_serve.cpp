@@ -131,14 +131,14 @@ TEST(ServeApi, Catalogs)
             EXPECT_EQ(d.at("integrated"), true);
             EXPECT_EQ(d.at("module"), "sx1276");
         }
-        if (d.at("name") == "arduino-nrf24l01p") {
+        if (d.at("name") == "pico-nrf24l01p") {
             EXPECT_EQ(d.at("radio").at("type"), "nrf24");
             EXPECT_FALSE(d.at("limits").at("tx_power_levels").empty());
-            EXPECT_EQ(d.at("mcu"), "arduino-nano");
+            EXPECT_EQ(d.at("mcu"), "rpi-pico");
         }
     }
     EXPECT_TRUE(found);
-    EXPECT_EQ(hw.at("mcus").size(), 18u);
+    EXPECT_EQ(hw.at("mcus").size(), 15u);
     ASSERT_EQ(hw.at("modules").size(), 5u);
     for (const json &m : hw.at("modules")) {
         if (m.at("name") == "nrf24l01p-pa-lna") {
@@ -168,13 +168,13 @@ TEST(ServeApi, Wiring)
     EXPECT_NE(w.at("rows").at(0).at("mcu_pin").get<std::string>().find("3V3"), std::string::npos);
     EXPECT_TRUE(w.at("warnings").empty());
 
-    w = body_json(call(api, "GET", "/api/wiring/arduino-nano/nrf24l01p-pa-lna"));
+    w = body_json(call(api, "GET", "/api/wiring/rpi-pico/e32-900m30s"));
     EXPECT_FALSE(w.at("warnings").empty());
 
     w = body_json(call(api, "GET", "/api/wiring/esp32-sx1276")); // radio on the board
     EXPECT_EQ(w.at("integrated"), true);
     EXPECT_TRUE(w.at("rows").empty());
-    w = body_json(call(api, "GET", "/api/wiring/arduino-nrf24l01p")); // board of parts
+    w = body_json(call(api, "GET", "/api/wiring/pico-nrf24l01p")); // board of parts
     EXPECT_EQ(w.at("rows").size(), 8u);
 
     EXPECT_EQ(call(api, "GET", "/api/wiring/nope").status, 404);

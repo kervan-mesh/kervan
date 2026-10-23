@@ -42,24 +42,39 @@ a low power step (`tx_power_dbm` 2 in the scenario) on the bench.
 In the Node tab, section Hardware, a node with **MCU + module** gets **Wiring & firmware**: the
 board's pin headers and the module's pads as seen from above, with a coloured wire per signal (⤢
 opens a larger view). Every MCU board in the catalog with a header is drawn — Pico family, ESP32
-dev kits, Arduino Nano/Uno/Mega, STM32 Blue Pill and Nucleo-F401RE, Nordic DKs — with nRF24 and
-LoRa modules (RFM95W-style SX1276, Ebyte E32-900M30S). Firmware builds exist for the Pico family
-with nRF24 modules; the others get the drawing and pin choice for now.
+dev kits, STM32 Blue Pill and Nucleo-F401RE, Nordic DKs — with nRF24 and
+LoRa modules (RFM95W-style SX1276, Ebyte E32-900M30S). The board firmware (nRF24 modules for
+now; LoRa comes with phase 7) builds for:
+
+| Board | Built with | Result | Onto the board |
+|---|---|---|---|
+| Raspberry Pi Pico, Pico W, Pico 2 | Pico SDK (`firmware/pico_nrf24`) | `.uf2` | copied onto the `RPI-RP2` drive (hold BOOTSEL while plugging in) |
+| Nordic nRF52 DK, nRF52840 DK, nRF5340 DK, nRF7002 DK | Zephyr (`firmware/zephyr_nrf24`) | `.hex` | copied onto the DK's `JLINK` drive |
+| STM32 Nucleo-F401RE | Zephyr | `.bin` | copied onto the ST-LINK drive (`NODE_F401RE`) |
+| ESP32 DevKit V1, ESP32-DevKitC V4, ESP32-S3-DevKitC-1, ESP32-C3-DevKitM-1 | Zephyr | `.bin` | written with esptool over the board's serial port |
+
+The STM32 Blue Pill (needs an ST-LINK dongle) gets the drawing and pin choice only.
 
 - **Choose pins** by clicking a module pin and then a pin of the board, or in the table. Only
   pins that can work are offered: control pins go to any GPIO (signals the MCU drives not to
   input-only pins such as the ESP32's GPIO34–39); SCK, MOSI and MISO must be on one SPI controller
-  (Pico: SPI0 on GP0–7 and GP16–22, SPI1 on GP8–15 and GP26–28; Arduino: fixed; ESP32, nRF: any
-  pin) and follow each other when you move one to the other controller; a pin that is taken swaps
+  (Pico: SPI0 on GP0–7 and GP16–22, SPI1 on GP8–15 and GP26–28; STM32: the controller's pins;
+  ESP32, nRF: any pin) and follow each other when you move one to the other controller; a pin that is taken swaps
   places. VCC and
   GND stay on 3V3(OUT) and GND. The scenario keeps only what differs from the default:
   `"pins": {"CE": "GP15"}` on the node (no effect on the simulation). **Default pins** goes back.
-- **Build firmware** builds `firmware/pico_nrf24` for exactly these pins, in the dev container
-  (Docker Desktop must run and the `kervan-dev` image exist). The first build takes a minute, later
-  ones seconds. The file lands in `build/uf2/`, named after the board and pins, e.g.
-  `kervan_nrf24-rpi-pico-spi0-sck18-mosi19-miso16-csn17-ce15.uf2`.
-- **Open folder** shows it in the file manager. **Flash to Pico** appears while a Pico is plugged
-  in with BOOTSEL held (its `RPI-RP2` drive is found) and copies the file onto it.
+- **Build firmware** builds the firmware for exactly these pins, in the dev container (Docker
+  Desktop must run and the `kervan-dev` image exist). Pico SDK builds take the pins as compile
+  options; Zephyr builds get a devicetree overlay that ksim writes (`build/fw/<name>.overlay`: the
+  SPI bus with its pin routing, CS, and a `kervan,nrf24` node with CE, the board's catalog name and
+  the wiring). The first build of a board takes a minute or two, later ones seconds. The file lands
+  in `build/fw/`, named after the board and pins, e.g.
+  `kervan_nrf24-rpi-pico-spi0-sck18-mosi19-miso16-csn17-ce15.uf2` or
+  `kervan_nrf24-nucleo-f401re-spi1-sckpa5-mosipa7-misopa6-csnpb6-cepc7.bin`.
+- **Open folder** shows it in the file manager. **Flash to …** appears when the board's USB drive
+  is there (Pico in BOOTSEL, a Nucleo's ST-LINK, a DK's J-Link) and copies the file onto it. For
+  ESP32 boards, **Flash over USB** runs esptool on this computer (`pip install esptool`) on the
+  serial port you pick; close live sessions and serial monitors on that port first.
 - Building and flashing run programs on your computer, so `ksim serve` offers them only with
   `--allow-processes`.
 
@@ -70,11 +85,29 @@ From the command line:
 
 ```sh
 ksim wiring rpi-pico nrf24l01p CE=GP15                 # the wiring with your pins
-ksim firmware rpi-pico nrf24l01p CE=GP15               # build it in Docker -> build/uf2/...
+ksim firmware rpi-pico nrf24l01p CE=GP15               # build it in Docker -> build/fw/...
+ksim firmware nucleo-f401re nrf24l01p CE=PB10          # Zephyr; tells how to flash it
 ksim firmware rpi-pico-w nrf24l01p-pa-lna SCK=GP10 MOSI=GP11 MISO=GP12
 ```
 
 ## Firmware by hand
+
+### Zephyr boards
+
+`firmware/zephyr_nrf24` is a Zephyr application around the same code (`firmware/common`); the dev
+container has Zephyr 4.4 with the nRF, STM32 and Espressif HALs and the SDK's ARM, Xtensa and
+RISC-V toolchains. It needs an overlay with the radio node; `ksim firmware MCU MODULE` writes one
+to `build/fw/` and builds, or by hand:
+
+```sh
+cmake -S firmware/zephyr_nrf24 -B /tmp/zfw -G Ninja -DBOARD=nrf52840dk/nrf52840 \
+      -DEXTRA_DTC_OVERLAY_FILE=build/fw/<name>.overlay && cmake --build /tmp/zfw
+```
+
+The protocol runs over the board's console UART at 115200 baud, which is its USB serial port
+(J-Link, ST-LINK or the ESP32's USB-serial chip).
+
+### Pico SDK
 
 The firmware is `firmware/pico_nrf24` (C, Pico SDK 2.2). Build it in the dev container, which has
 the SDK and picotool:

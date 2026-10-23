@@ -134,7 +134,7 @@ export interface Wiring {
   warnings: string[];
   notes: string[];
   // with POST /api/wiring: the firmware for this wiring, or why there is none
-  firmware?: { name?: string; wiring?: string; error?: string };
+  firmware?: FirmwareInfo;
 }
 
 export interface PhyInfo {
@@ -281,11 +281,34 @@ export const wiringFor = (mcu: string, module: string, pins: Record<string, stri
 
 // ---- firmware builds (docs/hardware.md, "Wiring and firmware") ----
 
+// The firmware for a wiring (POST /api/wiring), or why there is none.
+export interface FirmwareInfo {
+  name?: string;
+  wiring?: string;
+  output?: 'uf2' | 'hex' | 'bin';
+  flash?: 'drive' | 'esptool'; // copied onto the board's USB drive, or written with esptool
+  drive_kind?: DriveKind;
+  board?: string; // the SDK's board name
+  error?: string;
+}
+
+export type DriveKind = 'rp2' | 'stlink' | 'jlink';
+
+export interface BootDrive {
+  path: string;
+  kind: DriveKind;
+  label: string;
+}
+
+// The last firmware job: a build or flashing with esptool.
 export interface FirmwareBuild {
   state: 'idle' | 'running' | 'done' | 'failed';
+  job: '' | 'build' | 'flash';
   name: string;
   wiring: string;
   file: string;
+  flash: '' | 'drive' | 'esptool';
+  drive_kind: '' | DriveKind;
   error: string;
   log: string[];
   seconds: number;
@@ -296,10 +319,15 @@ export const buildStatus = () => request<FirmwareBuild>('GET', '/api/firmware/bu
 export const buildFirmware = (mcu: string, module: string, pins: Record<string, string>) =>
   request<FirmwareBuild>('POST', '/api/firmware/build', JSON.stringify({ mcu, module, pins }));
 
-export const bootDrives = () => request<{ drives: string[] }>('GET', '/api/firmware/drives');
+export const bootDrives = () => request<{ drives: BootDrive[] }>('GET', '/api/firmware/drives');
 
-export const flashFirmware = (drive?: string) =>
-  request<{ ok: true; drive: string; file: string }>('POST', '/api/firmware/flash', JSON.stringify(drive ? { drive } : {}));
+// Copy the last build onto a drive, or start esptool on a port (then follow buildStatus).
+export const flashFirmware = (target: { drive: string } | { port: string }) =>
+  request<{ ok?: true; drive?: string; file?: string; state?: string }>(
+    'POST',
+    '/api/firmware/flash',
+    JSON.stringify(target),
+  );
 
 export const revealFirmware = () => request<{ ok: true }>('POST', '/api/firmware/reveal', '{}');
 

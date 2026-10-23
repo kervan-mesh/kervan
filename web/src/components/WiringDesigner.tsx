@@ -426,6 +426,7 @@ export function WiringDesigner({ node, mcu, module, buildAllowed, onChange, big 
           pins={choice}
           firmware={wiring.firmware}
           allowed={buildAllowed}
+          port={node.hardware?.port}
         />
       )}
     </div>

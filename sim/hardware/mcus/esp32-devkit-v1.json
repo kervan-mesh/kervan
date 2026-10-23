@@ -31,5 +31,6 @@
   "spi": [
     {"name": "VSPI", "sck": ["GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO12", "GPIO13", "GPIO14", "GPIO15", "GPIO16", "GPIO17", "GPIO18", "GPIO19", "GPIO21", "GPIO22", "GPIO23", "GPIO25", "GPIO26", "GPIO27", "GPIO32", "GPIO33"], "mosi": ["GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO12", "GPIO13", "GPIO14", "GPIO15", "GPIO16", "GPIO17", "GPIO18", "GPIO19", "GPIO21", "GPIO22", "GPIO23", "GPIO25", "GPIO26", "GPIO27", "GPIO32", "GPIO33"], "miso": ["GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO12", "GPIO13", "GPIO14", "GPIO15", "GPIO16", "GPIO17", "GPIO18", "GPIO19", "GPIO21", "GPIO22", "GPIO23", "GPIO25", "GPIO26", "GPIO27", "GPIO32", "GPIO33", "GPIO34", "GPIO35", "GPIO36", "GPIO39"]}
   ],
-  "notes": ["Firmware: ESP-IDF (C).", "GPIO34-39 are inputs only.", "Strapping pins GPIO0, 2, 12 and 15 decide the boot mode: keep them free if you can."]
+  "firmware": {"project": "zephyr_nrf24", "board": "esp32_devkitc/esp32/procpu", "pinctrl": "esp32", "spi_node": "spi3", "spi_pinmux": "SPIM3", "output": "bin", "flash": "esptool", "esp_chip": "esp32", "flash_address": "0x1000"},
+  "notes": ["Firmware: Zephyr (C), board esp32_devkitc/esp32/procpu.", "GPIO34-39 are inputs only.", "Strapping pins GPIO0, 2, 12 and 15 decide the boot mode: keep them free if you can."]
 }

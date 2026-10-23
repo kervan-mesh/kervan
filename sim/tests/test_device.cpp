@@ -41,7 +41,7 @@ bool has(const std::vector<std::string> &list, const std::string &part)
 TEST(Device, BuiltinCatalog)
 {
     const DeviceRegistry reg = DeviceRegistry::builtin();
-    for (const char *name : {"esp32-sx1276", "esp32s3-sx1262", "arduino-nrf24l01p"}) {
+    for (const char *name : {"esp32-sx1276", "esp32s3-sx1262", "pico-nrf24l01p"}) {
         SCOPED_TRACE(name);
         const DeviceProfile *d = reg.find(name);
         ASSERT_NE(d, nullptr);
@@ -52,21 +52,21 @@ TEST(Device, BuiltinCatalog)
         EXPECT_GE(d->module_version, 1);
         EXPECT_EQ(d->check(d->radio), "");
     }
-    const DeviceProfile *nrf = reg.find("arduino-nrf24l01p");
+    const DeviceProfile *nrf = reg.find("pico-nrf24l01p");
     EXPECT_EQ(nrf->radio.type, PhyType::Nrf24);
     EXPECT_EQ(nrf->radio.nrf24.channel, 76);
-    EXPECT_EQ(nrf->mcu, "arduino-nano");
+    EXPECT_EQ(nrf->mcu, "rpi-pico");
     EXPECT_EQ(nrf->module, "nrf24l01p");
     EXPECT_EQ(reg.find("nope"), nullptr);
 
-    for (const char *m : {"rpi-pico", "rpi-pico-w", "arduino-nano", "esp32", "esp32-s3"}) {
+    for (const char *m : {"rpi-pico", "rpi-pico-w", "esp32-devkit-v1", "esp32", "esp32-s3"}) {
         EXPECT_NE(reg.mcu(m), nullptr) << m;
     }
     for (const char *m : {"nrf24l01p", "nrf24l01p-pa-lna", "sx1276", "sx1262"}) {
         ASSERT_NE(reg.module(m), nullptr) << m;
         EXPECT_FALSE(reg.module(m)->pins.empty()) << m;
     }
-    EXPECT_EQ(reg.mcus().size(), 18u);
+    EXPECT_EQ(reg.mcus().size(), 15u);
     EXPECT_EQ(reg.modules().size(), 5u);
     EXPECT_EQ(reg.board_profile("esp32-sx1276")->integrated, true);
 }
@@ -108,7 +108,7 @@ TEST(Device, Limits)
     r.type = PhyType::Nrf24;
     EXPECT_NE(lora.check(r).find("has a lora radio"), std::string::npos);
 
-    const DeviceProfile &nrf = *reg.find("arduino-nrf24l01p");
+    const DeviceProfile &nrf = *reg.find("pico-nrf24l01p");
     r = nrf.radio;
     r.tx_power_dbm = -6.0;
     EXPECT_EQ(nrf.check(r), "");
@@ -145,13 +145,21 @@ TEST(Device, Wiring)
     EXPECT_TRUE(has(w.notes, "10 uF"));
     EXPECT_TRUE(has(w.notes, "Pico SDK"));
 
-    // the PA/LNA module needs more current than an Arduino Nano's 3.3 V pin gives
-    w = reg.wiring("arduino-nano", "nrf24l01p-pa-lna");
+    // the 1 W LoRa module needs more current than a Pico's 3.3 V pin gives
+    w = reg.wiring("rpi-pico", "e32-900m30s");
     EXPECT_TRUE(has(w.warnings, "from its own supply"));
-    EXPECT_FALSE(has(w.warnings, "level shifter")); // nRF24 inputs are 5 V tolerant
 
-    // SX1276: 3.3 V logic only
-    w = reg.wiring("arduino-nano", "sx1276");
+    // 5 V logic: nRF24 inputs take it, the SX1276 does not
+    DeviceRegistry five = DeviceRegistry::builtin();
+    five.add(parse_mcu(R"({"name": "avr", "title": "AVR", "logic_v": 5.0, "supply_out_ma": 50,
+                          "pins": {"3v3": "3V3", "gnd": "GND", "spi_sck": "D13", "spi_mosi": "D11",
+                                   "spi_miso": "D12", "spi_cs": "D10"},
+                          "gpio": ["D9", "D2", "D3"]})"));
+    w = five.wiring("avr", "nrf24l01p");
+    EXPECT_FALSE(has(w.warnings, "level shifter"));
+    w = five.wiring("avr", "nrf24l01p-pa-lna");
+    EXPECT_TRUE(has(w.warnings, "about 50 mA"));
+    w = five.wiring("avr", "sx1276");
     EXPECT_TRUE(has(w.warnings, "level shifter"));
 
     // without an MCU there is nothing to map, but the module's pins are listed
@@ -195,14 +203,13 @@ TEST(Device, PinHeader)
     const auto gnd = pico.find_pin("GND", pico.find_pin("3V3(OUT)"));
     EXPECT_EQ(gnd, std::make_pair(1, 2)); // pin 38, next to 3V3(OUT)
 
-    // labels and numbers counting down (Arduino Nano: pin 1 is TX1, bottom right)
-    const McuProfile &nano = *reg.mcu("arduino-nano");
-    EXPECT_EQ(number(nano, "D1"), 1);
-    EXPECT_EQ(number(nano, "D13"), 16);
-    EXPECT_EQ(number(nano, "VIN"), 30);
-    const HeaderPin &tx = nano.header->strips[1].pins.back();
-    EXPECT_EQ(tx.name, "D1");
-    EXPECT_EQ(tx.label, "TX1");
+    // labels and numbers counting down (Nucleo CN5: D8 is pin 1, at the bottom)
+    const McuProfile &nucleo = *reg.mcu("nucleo-f401re");
+    EXPECT_EQ(number(nucleo, "PA9"), 1);
+    EXPECT_EQ(number(nucleo, "PB8"), 10);
+    const HeaderPin &d13 = nucleo.header->strips[2].pins[4];
+    EXPECT_EQ(d13.name, "PA5");
+    EXPECT_EQ(d13.label, "D13");
 
     // every catalog MCU with a header: its defaults and SPI pins are on it and wire up
     for (const McuProfile *m : reg.mcus()) {
@@ -295,7 +302,7 @@ TEST(Device, ChosenPins)
               "pins: GPIO34 is an input only: it cannot drive CE");
     w = reg.wiring("esp32-devkit-v1", "nrf24l01p", {{"IRQ", "GPIO34"}}); // an input is fine
     EXPECT_EQ(row(w, "IRQ").mcu_pin, "GPIO34 (D34)");
-    EXPECT_NE(error({{"SCK", "D5"}}, "arduino-nano").find("SPI: SCK D13, MOSI D11, MISO D12"),
+    EXPECT_NE(error({{"SCK", "PA0"}}, "nucleo-f401re").find("SPI1: SCK PA5/PB3, MOSI PA7/PB5"),
               std::string::npos);
     EXPECT_EQ(error({}), "no error");
 }

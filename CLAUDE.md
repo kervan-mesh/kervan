@@ -52,7 +52,10 @@ Board firmware (`docs/hardware.md`): `firmware/common/` is portable C99 like cor
 driver from the datasheet — RF24 is GPL —, protocol JSON, the firmware logic `kfw_app`) and is
 tested on the PC against the nRF24 register model in `firmware/testing/`;
 `firmware/pico_nrf24/` is a separate Pico SDK project (SDK 2.2 in the dev container, CI job
-"firmware" builds the `.uf2`s). ksim talks to boards through `sim/src/hw/` (`ksim_hw`: serial
+"firmware" builds the `.uf2`s); `firmware/zephyr_nrf24/` the same logic as a Zephyr app for the
+nRF DKs, Nucleo and ESP32 kits (Zephyr 4.4 + SDK 1.0 in the dev container), its pins from an
+overlay `hw::FirmwareSpec::overlay()` writes (pinctrl styles nrf/stm32/esp32 per catalog
+`firmware` entry). No AVR/Arduino (the user dropped it). ksim talks to boards through `sim/src/hw/` (`ksim_hw`: serial
 ports, `hw::LineIo`, virtual boards = firmware logic on modelled chips); `LiveSession` merges
 their reports into the trace as `"ev":"hw"` lines (not hashed) and then runs in real time only.
 Board protocol changes bump `KFW_PROTOCOL` / `hw::kProtocol` together.
@@ -176,10 +179,12 @@ every push/PR.
     those pins built in Docker by `ksim serve` (`hw::FirmwareBuilder`, `/api/firmware/*`,
     `ksim firmware`), open folder, flash to a Pico in BOOTSEL; boards report their `wiring`
     Catalog now has 18 MCU boards with headers (Pico family, ESP32 kits incl. the user's DevKit
-    V1, Arduino Nano/Uno/Mega, Blue Pill, the user's Nucleo-F401RE, nRF52/52840/5340/7002 DKs;
+    V1, Blue Pill, the user's Nucleo-F401RE, nRF52/52840/5340/7002 DKs;
     header strips with gaps, labels, numbering) and the user's Ebyte E32-900M30S; pinouts from
     vendor docs / Zephyr board files, noted per file. The user's E18-MS1PA2 (CC2530 Zigbee) waits
-    for an 802.15.4 PHY
+    for an 802.15.4 PHY. Firmware builds with Zephyr for the nRF DKs, Nucleo-F401RE and ESP32 kits
+    (`.hex`/`.bin`, flashed by copying onto the J-Link/ST-LINK drive or with esptool); Arduino
+    boards removed from the catalog at the user's request
   - [ ] 6c ← next: true HIL: firmware hands its frames to ksim over USB, ksim models the channel; real
     and virtual nodes in one network (µs collisions of nRF24 only approximate through USB; LoRa fine)
   - [ ] 6d: calibrate path loss, shadowing and the PA/LNA estimates from measurements

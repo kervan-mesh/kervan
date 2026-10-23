@@ -823,6 +823,11 @@ input.payload-text {
   margin-right: 6px;
 }
 
+.inline.wrap {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .firmware h4 {
   margin: 12px 0 4px;
   font-size: 12px;

@@ -112,13 +112,13 @@ TEST(Scenario, ShippedScenariosParse)
 TEST(Scenario, DeviceProvidesTheRadio)
 {
     const ksim::Scenario s = parse_scenario(R"({"nodes": [
-        {"id": 1, "pos": [0, 0], "device": "arduino-nrf24l01p", "stack": "nrf24-esb"},
-        {"id": 2, "pos": [0, 0], "device": "arduino-nrf24l01p", "stack": "nrf24-esb",
+        {"id": 1, "pos": [0, 0], "device": "pico-nrf24l01p", "stack": "nrf24-esb"},
+        {"id": 2, "pos": [0, 0], "device": "pico-nrf24l01p", "stack": "nrf24-esb",
          "radio": {"channel": 10, "tx_power_dbm": -12}},
         {"id": 3, "pos": [0, 0], "device": "esp32-sx1276", "stack": "kervan",
          "radio": {"sf": 12, "tx_power_dbm": 20}}]})");
     ASSERT_TRUE(s.nodes[0].device.has_value());
-    EXPECT_EQ(s.nodes[0].device->name, "arduino-nrf24l01p");
+    EXPECT_EQ(s.nodes[0].device->name, "pico-nrf24l01p");
     EXPECT_EQ(s.nodes[0].radio.type, ksim::PhyType::Nrf24);
     EXPECT_EQ(s.nodes[0].radio.nrf24.channel, 76);
     EXPECT_DOUBLE_EQ(s.nodes[0].radio.tx_power_dbm, 0.0);
@@ -166,7 +166,7 @@ TEST(Scenario, RadioTypesAndDeviceErrors)
 
     expect_error(R"({"nodes": [{"id": 1, "pos": [0, 0], "device": "toaster", "stack": "x"}]})",
                  "unknown device 'toaster'");
-    expect_error(R"({"nodes": [{"id": 1, "pos": [0, 0], "device": "arduino-nrf24l01p",
+    expect_error(R"({"nodes": [{"id": 1, "pos": [0, 0], "device": "pico-nrf24l01p",
                                 "stack": "x", "radio": {"tx_power_dbm": 5}}]})",
                  "supports tx_power_dbm -18, -12, -6, 0");
     expect_error(R"({"nodes": [{"id": 1, "pos": [0, 0], "device": "esp32-sx1276",

@@ -30,5 +30,6 @@
   "spi": [
     {"name": "FSPI", "sck": ["GPIO0", "GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO6", "GPIO7", "GPIO8", "GPIO9", "GPIO10", "GPIO18", "GPIO19", "GPIO20", "GPIO21"], "mosi": ["GPIO0", "GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO6", "GPIO7", "GPIO8", "GPIO9", "GPIO10", "GPIO18", "GPIO19", "GPIO20", "GPIO21"], "miso": ["GPIO0", "GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO6", "GPIO7", "GPIO8", "GPIO9", "GPIO10", "GPIO18", "GPIO19", "GPIO20", "GPIO21"]}
   ],
-  "notes": ["Firmware: ESP-IDF (C).", "GPIO2, 8 and 9 are strapping pins; GPIO18/19 are the USB D-/D+.", "Source: Espressif ESP32-C3-DevKitM-1 user guide (header blocks J1, J3)."]
+  "firmware": {"project": "zephyr_nrf24", "board": "esp32c3_devkitm", "pinctrl": "esp32", "spi_node": "spi2", "spi_pinmux": "SPIM2", "output": "bin", "flash": "esptool", "esp_chip": "esp32c3", "flash_address": "0x0"},
+  "notes": ["Firmware: Zephyr (C), board esp32c3_devkitm.", "GPIO2, 8 and 9 are strapping pins; GPIO18/19 are the USB D-/D+.", "Source: Espressif ESP32-C3-DevKitM-1 user guide (header blocks J1, J3)."]
 }

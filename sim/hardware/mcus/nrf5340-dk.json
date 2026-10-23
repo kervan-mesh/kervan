@@ -31,5 +31,6 @@
   "spi": [
     {"name": "SPIM", "sck": ["P1.00", "P1.01", "P1.04", "P1.05", "P1.06", "P1.07", "P1.08", "P1.09", "P1.10", "P1.11", "P1.12", "P1.13", "P1.14", "P1.15", "P0.04", "P0.05", "P0.06", "P0.07", "P0.25", "P0.26", "P1.02", "P1.03"], "mosi": ["P1.00", "P1.01", "P1.04", "P1.05", "P1.06", "P1.07", "P1.08", "P1.09", "P1.10", "P1.11", "P1.12", "P1.13", "P1.14", "P1.15", "P0.04", "P0.05", "P0.06", "P0.07", "P0.25", "P0.26", "P1.02", "P1.03"], "miso": ["P1.00", "P1.01", "P1.04", "P1.05", "P1.06", "P1.07", "P1.08", "P1.09", "P1.10", "P1.11", "P1.12", "P1.13", "P1.14", "P1.15", "P0.04", "P0.05", "P0.06", "P0.07", "P0.25", "P0.26", "P1.02", "P1.03"]}
   ],
-  "notes": ["Firmware: nRF Connect SDK / Zephyr (C).", "Any GPIO can be SPI (pins are chosen in software).", "VDD is 3.0 V by default (3.3 V needs the VDD switch on the DK); the on-chip radio is not simulated yet.", "Arduino connector map from Zephyr's nrf5340dk board files."]
+  "firmware": {"project": "zephyr_nrf24", "board": "nrf5340dk/nrf5340/cpuapp", "pinctrl": "nrf", "spi_node": "arduino_spi", "output": "hex", "flash": "drive"},
+  "notes": ["Firmware: Zephyr (C), board nrf5340dk/nrf5340/cpuapp.", "Any GPIO can be SPI (pins are chosen in software).", "VDD is 3.0 V by default (3.3 V needs the VDD switch on the DK); the on-chip radio is not simulated yet.", "Arduino connector map from Zephyr's nrf5340dk board files."]
 }

@@ -1,0 +1,8 @@
+{
+  "name": "pico-nrf24l01p",
+  "version": 1,
+  "title": "Raspberry Pi Pico + nRF24L01+",
+  "description": "Raspberry Pi Pico with a Nordic nRF24L01+ module, PCB antenna, wired as `ksim wiring rpi-pico nrf24l01p` shows",
+  "mcu": "rpi-pico",
+  "module": "nrf24l01p"
+}

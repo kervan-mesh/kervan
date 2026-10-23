@@ -4,11 +4,11 @@
   "duration_s": 60,
   "path_loss": { "model": "log_distance", "exponent": 3.0, "shadowing_sigma_db": 3 },
   "nodes": [
-    { "id": 1, "pos": [0, 0], "device": "arduino-nrf24l01p", "stack": "nrf24-esb", "config": { "addr": "0xE7E7E7E701" } },
-    { "id": 2, "pos": [6, 2], "device": "arduino-nrf24l01p", "stack": "nrf24-esb",
+    { "id": 1, "pos": [0, 0], "device": "pico-nrf24l01p", "stack": "nrf24-esb", "config": { "addr": "0xE7E7E7E701" } },
+    { "id": 2, "pos": [6, 2], "device": "pico-nrf24l01p", "stack": "nrf24-esb",
       "config": { "send_to": "0xE7E7E7E701", "listen": 0, "send_every_ms": 5000, "jitter_ms": 500 },
       "payload": { "hex": "4D 65 72 68 61 62 61 21" } },
-    { "id": 3, "pos": [-4, 7], "device": "arduino-nrf24l01p", "stack": "nrf24-esb",
+    { "id": 3, "pos": [-4, 7], "device": "pico-nrf24l01p", "stack": "nrf24-esb",
       "config": { "send_to": "0xE7E7E7E701", "listen": 0, "send_every_ms": 5000, "jitter_ms": 500 },
       "payload": { "python": "def payload(node, seq, t):\n    # node id, message number, temperature in 0.01 degC\n    temp = 21.0 + 2.0 * math.sin(t / 30) + rng.uniform(-0.2, 0.2)\n    return struct.pack('<BHh', node, seq, round(temp * 100))\n" } }
   ]

@@ -56,6 +56,48 @@ RUN set -eu; \
     picotool version
 ENV PICO_SDK_PATH=/opt/pico-sdk
 
+# Tools Zephyr needs on top of the above.
+RUN apt-get update && apt-get install -y --no-install-recommends -o Acquire::Retries=5 \
+        python3-venv \
+        device-tree-compiler \
+        gperf \
+        file \
+        wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Zephyr RTOS for the board firmware on ESP32, STM32 and nRF boards (firmware/zephyr_nrf24): the
+# workspace with only the HALs we use, and the SDK with the ARM, Xtensa (ESP32, ESP32-S3) and
+# RISC-V (ESP32-C3) toolchains.
+ARG ZEPHYR_VERSION=v4.4.2
+ARG ZEPHYR_SDK_VERSION=1.0.1
+ENV ZEPHYR_BASE=/opt/zephyrproject/zephyr \
+    ZEPHYR_SDK_INSTALL_DIR=/opt/zephyr-sdk \
+    PATH=/opt/zephyr-venv/bin:$PATH
+RUN set -eu; \
+    python3 -m venv /opt/zephyr-venv; \
+    pip install --no-cache-dir west; \
+    west init -m https://github.com/zephyrproject-rtos/zephyr --mr "${ZEPHYR_VERSION}" /opt/zephyrproject; \
+    cd /opt/zephyrproject; \
+    west config manifest.project-filter -- '-.*,+cmsis,+cmsis_6,+hal_nordic,+hal_stm32,+hal_espressif,+picolibc'; \
+    west update --narrow -o=--depth=1; \
+    pip install --no-cache-dir -r zephyr/scripts/requirements-base.txt; \
+    west blobs fetch hal_espressif; \
+    rm -rf /root/.cache
+RUN set -eu; \
+    file="zephyr-sdk-${ZEPHYR_SDK_VERSION}_linux-x86_64_minimal.tar.xz"; \
+    curl -fsSLo "/tmp/$file" "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${ZEPHYR_SDK_VERSION}/$file"; \
+    echo "ca9bc0ff66fafca1dac9d592a36d953cf16d096a9d09b1c0357f021cf9f6a7eb  /tmp/$file" | sha256sum -c -; \
+    mkdir -p /opt/zephyr-sdk; \
+    tar -xJf "/tmp/$file" -C /opt/zephyr-sdk --strip-components=1; \
+    rm "/tmp/$file"; \
+    cd /opt/zephyr-sdk; \
+    ./setup.sh -t arm-zephyr-eabi -t xtensa-espressif_esp32_zephyr-elf \
+        -t xtensa-espressif_esp32s3_zephyr-elf -t riscv64-zephyr-elf -c; \
+    rm -rf /root/.cache
+
+# Python packages the Zephyr modules need (esptool for the Espressif SoCs).
+RUN cd /opt/zephyrproject && west packages pip --install && rm -rf /root/.cache
+
 # ubuntu:24.04 ships a default non-root user "ubuntu" (uid 1000); work as that user.
 USER ubuntu
 WORKDIR /workspaces/kervan

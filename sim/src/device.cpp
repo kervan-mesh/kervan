@@ -259,12 +259,38 @@ McuProfile parse_mcu(const std::string &json_text, const std::string &where)
     }
     if (j.contains("firmware")) {
         const json &f = j.at("firmware");
-        check_object(f, {"project", "board"}, at + ".firmware");
-        m.firmware = FirmwareTarget{get_string(f, "project", "", at + ".firmware"),
-                                    get_string(f, "board", "", at + ".firmware")};
-        if (m.firmware->project.empty() || m.firmware->board.empty()) {
-            fail(at + ".firmware", "needs \"project\" and \"board\"");
+        const std::string w = at + ".firmware";
+        check_object(f,
+                     {"project", "board", "pinctrl", "spi_node", "spi_pinmux", "output", "flash",
+                      "esp_chip", "flash_address"},
+                     w);
+        FirmwareTarget t;
+        t.project = get_string(f, "project", "", w);
+        t.board = get_string(f, "board", "", w);
+        t.pinctrl = get_string(f, "pinctrl", "", w);
+        t.spi_node = get_string(f, "spi_node", "", w);
+        t.spi_pinmux = get_string(f, "spi_pinmux", "", w);
+        t.output = get_string(f, "output", "uf2", w);
+        t.flash = get_string(f, "flash", "drive", w);
+        t.esp_chip = get_string(f, "esp_chip", "", w);
+        t.flash_address = get_string(f, "flash_address", "0x0", w);
+        if (t.project.empty() || t.board.empty()) {
+            fail(w, "needs \"project\" and \"board\"");
         }
+        if (t.output != "uf2" && t.output != "hex" && t.output != "bin") {
+            fail(w + ".output", "must be \"uf2\", \"hex\" or \"bin\"");
+        }
+        if (t.flash != "drive" && t.flash != "esptool") {
+            fail(w + ".flash", "must be \"drive\" or \"esptool\"");
+        }
+        if (t.project != "pico_nrf24" && t.pinctrl != "nrf" && t.pinctrl != "stm32" &&
+            t.pinctrl != "esp32") {
+            fail(w + ".pinctrl", "must be \"nrf\", \"stm32\" or \"esp32\"");
+        }
+        if (t.flash == "esptool" && t.esp_chip.empty()) {
+            fail(w, "esptool needs \"esp_chip\"");
+        }
+        m.firmware = t;
     }
     m.notes = string_list(j, "notes", at);
     return m;

@@ -1,0 +1,26 @@
+# Copyright 2026 The Kervan Authors
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  nRF24L01+ radio on an SPI bus, driven by the Kervan board firmware (firmware/zephyr_nrf24).
+  ksim writes this node into an overlay for the wiring a scenario node chose.
+
+compatible: "kervan,nrf24"
+
+include: [spi-device.yaml]
+
+properties:
+  ce-gpios:
+    type: phandle-array
+    required: true
+    description: The radio's CE pin.
+
+  kervan,board:
+    type: string
+    required: true
+    description: The board's name in ksim's hardware catalog, reported in "hello".
+
+  kervan,wiring:
+    type: string
+    required: true
+    description: The wiring, as ksim writes it ("SPI1 SCK=PA5 MOSI=PA7 ..."), reported in "hello".

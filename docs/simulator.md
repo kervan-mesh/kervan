@@ -144,8 +144,7 @@ on the board.
   `{"name", "label"}` for numbered pads); pads that are not among its `pins` (ANT, NC) are drawn
   unwired.
 - MCU boards with headers: Raspberry Pi Pico / Pico W / Pico 2, ESP32 DevKit V1 (DOIT, 30 pins),
-  ESP32-DevKitC V4, ESP32-S3-DevKitC-1, ESP32-C3-DevKitM-1, Arduino Nano / Uno R3 / Mega 2560,
-  STM32 Blue Pill, Nucleo-F401RE (Arduino connectors), Nordic nRF52 DK, nRF52840 DK, nRF5340 DK,
+  ESP32-DevKitC V4, ESP32-S3-DevKitC-1, ESP32-C3-DevKitM-1, STM32 Blue Pill, Nucleo-F401RE (Arduino connectors), Nordic nRF52 DK, nRF52840 DK, nRF5340 DK,
   nRF7002 DK (Arduino connectors). Each file's notes name its pinout source; check against your
   board's silkscreen where a note asks for it. `esp32` and `esp32-s3` are the bare chips used by
   integrated boards.
@@ -294,7 +293,7 @@ By default a stack's traffic generator makes up its own test data (`len` bytes).
 what it sends instead:
 
 ```json
-{ "id": 2, "pos": [5, 0], "device": "arduino-nrf24l01p", "stack": "nrf24-esb",
+{ "id": 2, "pos": [5, 0], "device": "pico-nrf24l01p", "stack": "nrf24-esb",
   "config": { "send_to": "0xE7E7E7E701", "send_every_ms": 2000 },
   "payload": { "hex": "01 A2 FF 00" } }
 ```

@@ -750,8 +750,19 @@ WiringRequest wiring_request(const std::string &body)
 
 json build_json(const hw::FirmwareBuilder::Status &s)
 {
-    return {{"state", s.state}, {"name", s.name},   {"wiring", s.wiring}, {"file", s.file},
-            {"error", s.error}, {"log", s.log},     {"seconds", s.seconds}};
+    return {{"state", s.state},   {"job", s.job},     {"name", s.name},
+            {"wiring", s.wiring}, {"file", s.file},   {"flash", s.flash},
+            {"drive_kind", s.drive_kind},             {"error", s.error},
+            {"log", s.log},       {"seconds", s.seconds}};
+}
+
+json drives_json(const std::vector<hw::BootDrive> &drives)
+{
+    json out = json::array();
+    for (const hw::BootDrive &d : drives) {
+        out.push_back({{"path", d.path}, {"kind", d.kind}, {"label", d.label}});
+    }
+    return out;
 }
 
 } // namespace
@@ -773,7 +784,12 @@ Response Api::wiring_for(const std::string &body) const
     }
     try {
         const hw::FirmwareSpec spec = hw::firmware_spec(opt_.devices, r.mcu, r.module, r.pins);
-        out["firmware"] = {{"name", spec.name()}, {"wiring", spec.wiring()}};
+        out["firmware"] = {{"name", spec.name()},
+                           {"wiring", spec.wiring()},
+                           {"output", spec.extension()},
+                           {"flash", spec.target.flash},
+                           {"drive_kind", hw::drive_kind_for(spec.extension())},
+                           {"board", spec.target.board}};
     } catch (const std::runtime_error &e) {
         out["firmware"] = {{"error", e.what()}};
     }
@@ -787,11 +803,8 @@ Response Api::firmware(const std::string &action, const std::string &method,
         if (method != "GET") {
             return error(405, "use GET");
         }
-        json drives = json::array();
-        for (const std::string &d : opt_.list_drives ? opt_.list_drives() : hw::uf2_drives()) {
-            drives.push_back(d);
-        }
-        return json_response({{"drives", drives}});
+        return json_response(
+            {{"drives", drives_json(opt_.list_drives ? opt_.list_drives() : hw::boot_drives())}});
     }
     if (!opt_.builder) {
         return error(404, "this ksim serve does not build firmware");
@@ -818,7 +831,7 @@ Response Api::firmware(const std::string &action, const std::string &method,
             return error(400, e.what());
         }
         if (!opt_.builder->start(spec)) {
-            return error(409, "a build is running");
+            return error(409, "a build or flashing is running");
         }
         return json_response(build_json(opt_.builder->status()));
     }
@@ -832,40 +845,51 @@ Response Api::firmware(const std::string &action, const std::string &method,
         }
         return json_response({{"ok", true}});
     }
-    // flash: the last build onto the board in BOOTSEL mode
-    if (s.state != "done") {
+    // flash: the last build onto the board
+    if (s.state == "running") {
+        return error(409, "a build or flashing is running");
+    }
+    if (s.file.empty()) {
         return error(409, "build the firmware first");
     }
-    json req = json::parse(body.empty() ? "{}" : body, nullptr, false);
-    const std::vector<std::string> drives =
-        opt_.list_drives ? opt_.list_drives() : hw::uf2_drives();
-    std::string drive = req.is_object() ? req.value("drive", "") : "";
-    if (drive.empty()) {
-        if (drives.size() != 1) {
-            return error(409, drives.empty()
-                                  ? "no Pico in BOOTSEL mode found: hold BOOTSEL while plugging "
-                                    "it in"
-                                  : "more than one Pico in BOOTSEL mode: say which drive");
+    const json req = json::parse(body.empty() ? "{}" : body, nullptr, false);
+    if (s.flash == "esptool") {
+        const std::string port = req.is_object() ? req.value("port", "") : "";
+        if (port.empty()) {
+            return error(400, "needs {\"port\": \"COM5\"}: the board's serial port");
         }
-        drive = drives[0];
+        if (!opt_.builder->flash_esptool(port)) {
+            return error(409, "a build or flashing is running");
+        }
+        return json_response(build_json(opt_.builder->status()));
     }
-    if (std::find(drives.begin(), drives.end(), drive) == drives.end()) {
-        return error(400, drive + " is not a Pico in BOOTSEL mode");
+    std::vector<hw::BootDrive> drives;
+    for (const hw::BootDrive &d : opt_.list_drives ? opt_.list_drives() : hw::boot_drives()) {
+        if (d.kind == s.drive_kind) {
+            drives.push_back(d);
+        }
+    }
+    const std::string want = req.is_object() ? req.value("drive", "") : "";
+    const auto it = std::find_if(drives.begin(), drives.end(), [&](const hw::BootDrive &d) {
+        return want.empty() || d.path == want;
+    });
+    const char *how = s.drive_kind == "rp2"      ? "hold BOOTSEL while plugging the Pico in"
+                      : s.drive_kind == "stlink" ? "plug in the board's ST-LINK USB"
+                                                 : "plug in the board's USB (J-Link)";
+    if (it == drives.end()) {
+        return error(want.empty() ? 409 : 400,
+                     want.empty() ? std::string("no drive for this board found: ") + how
+                                  : want + " is not a drive for this firmware");
+    }
+    if (want.empty() && drives.size() > 1) {
+        return error(409, "more than one board drive found: say which one");
     }
     try {
-        if (opt_.list_drives) {
-            // tests: a plain directory stands for the drive
-            std::filesystem::copy_file(s.file,
-                                       std::filesystem::path(drive) /
-                                           std::filesystem::path(s.file).filename(),
-                                       std::filesystem::copy_options::overwrite_existing);
-        } else {
-            hw::flash_uf2(s.file, drive);
-        }
+        hw::flash_to_drive(s.file, *it);
     } catch (const std::exception &e) {
         return error(400, e.what());
     }
-    return json_response({{"ok", true}, {"drive", drive}, {"file", s.file}});
+    return json_response({{"ok", true}, {"drive", it->path}, {"file", s.file}});
 }
 
 // ---- real boards ----

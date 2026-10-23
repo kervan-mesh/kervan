@@ -53,8 +53,10 @@ int usage()
                  "      --hardware DIR: more hardware (DIR/mcus, DIR/modules, DIR/boards)\n"
                  "  ksim ports                      list serial ports (real boards)\n"
                  "  ksim hello PORT                 ask the board on PORT what it is\n"
-                 "  ksim firmware MCU MODULE [PIN=GPn ...]  build the board firmware in Docker,\n"
-                 "                                  e.g. ksim firmware rpi-pico nrf24l01p CE=GP15\n"
+                 "  ksim firmware MCU MODULE [PIN=NAME ...] [--overlay FILE]\n"
+                 "      build the board firmware in Docker, e.g. ksim firmware rpi-pico nrf24l01p "
+                 "CE=GP15;\n"
+                 "      --overlay: only write the Zephyr devicetree overlay for that wiring\n"
                  "  ksim version\n");
     return 2;
 }
@@ -264,6 +266,15 @@ int list_devices(std::vector<std::string> args)
 int build_firmware(std::vector<std::string> args)
 {
     const ksim::DeviceRegistry devices = load_devices(args);
+    std::string overlay_file; // --overlay FILE: write the Zephyr overlay only
+    for (size_t i = 0; i + 1 < args.size(); i++) {
+        if (args[i] == "--overlay") {
+            overlay_file = args[i + 1];
+            args.erase(args.begin() + static_cast<std::ptrdiff_t>(i),
+                       args.begin() + static_cast<std::ptrdiff_t>(i) + 2);
+            break;
+        }
+    }
     if (args.size() < 2) {
         return usage();
     }
@@ -276,6 +287,18 @@ int build_firmware(std::vector<std::string> args)
         pins[args[i].substr(0, eq)] = args[i].substr(eq + 1);
     }
     const ksim::hw::FirmwareSpec spec = ksim::hw::firmware_spec(devices, args[0], args[1], pins);
+    if (!overlay_file.empty()) {
+        if (spec.overlay().empty()) {
+            std::fprintf(stderr, "error: %s builds with the Pico SDK: its pins are compile "
+                                 "options, not an overlay\n",
+                         args[0].c_str());
+            return 1;
+        }
+        std::ofstream(overlay_file, std::ios::binary) << spec.overlay();
+        std::printf("%s: board %s, %s\n", overlay_file.c_str(), spec.target.board.c_str(),
+                    spec.wiring().c_str());
+        return 0;
+    }
     std::printf("building %s (%s)\n", spec.name().c_str(), spec.wiring().c_str());
     std::fflush(stdout);
     ksim::hw::FirmwareBuilder::Options opt;
@@ -296,9 +319,15 @@ int build_firmware(std::vector<std::string> args)
         std::fprintf(stderr, "error: %s\n", s.error.c_str());
         return 1;
     }
-    std::printf("firmware: %s\nflash it: hold BOOTSEL while plugging the Pico in, copy the file "
-                "onto the RPI-RP2 drive\n",
-                s.file.c_str());
+    const std::string how =
+        s.flash == "esptool"
+            ? "python -m esptool --chip " + spec.target.esp_chip + " --port PORT write_flash " +
+                  spec.target.flash_address + " " + s.file
+        : s.drive_kind == "rp2"    ? "hold BOOTSEL while plugging the Pico in, copy the file onto "
+                                     "the RPI-RP2 drive"
+        : s.drive_kind == "stlink" ? "copy the file onto the board's ST-LINK drive (NODE_...)"
+                                   : "copy the file onto the board's J-Link drive (JLINK)";
+    std::printf("firmware: %s\nflash it: %s\n", s.file.c_str(), how.c_str());
     return 0;
 }
 

@@ -36,8 +36,8 @@ struct Options {
     std::function<std::vector<std::string>()> list_ports;
     // Firmware builds (docs/hardware.md); null: building is not offered.
     std::shared_ptr<hw::FirmwareBuilder> builder;
-    // Boot drives of boards in BOOTSEL mode; empty: hw::uf2_drives. Tests use a directory.
-    std::function<std::vector<std::string>()> list_drives;
+    // Boards' USB drives for flashing; empty: hw::boot_drives. Tests use directories.
+    std::function<std::vector<hw::BootDrive>()> list_drives;
 };
 
 struct Request {

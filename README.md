@@ -117,10 +117,11 @@ Try `city_mesh` (42 nodes in a city district, and what managed flooding costs th
 
 ### Try it: real boards
 
-A Raspberry Pi Pico with an nRF24L01+ module can run a scenario node for real, next to its
-simulation: wire the module as the UI draws it (or choose your own pins there), press **Build firmware**
-and **Flash to Pico** (`ksim serve --allow-processes`, Docker), pick the board's serial port in the
-node's **Real board** section and press **● Live**. The boards' sends and receptions appear next to the simulated ones, and the
+A board with an nRF24L01+ module can run a scenario node for real, next to its simulation: a
+Raspberry Pi Pico (Pico SDK), a Nordic nRF DK, an STM32 Nucleo or an ESP32 dev kit (Zephyr). Wire
+the module as the UI draws it (or choose your own pins there), press **Build firmware** and
+**Flash** (`ksim serve --allow-processes`, Docker), pick the board's serial port in the node's
+**Real board** section and press **● Live**. The boards' sends and receptions appear next to the simulated ones, and the
 results compare them. No boards at hand? `ksim serve --virtual-boards 2`. See
 [docs/hardware.md](docs/hardware.md).
 

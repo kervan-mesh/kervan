@@ -52,10 +52,17 @@ struct SpiBus {
     std::vector<std::string> sck, mosi, miso;
 };
 
-// How the Kervan board firmware is built for an MCU (firmware/<project>, docs/hardware.md).
+// How the Kervan board firmware is built for an MCU board (firmware/<project>, docs/hardware.md).
 struct FirmwareTarget {
-    std::string project; // "pico_nrf24"
-    std::string board;   // the SDK's board name, "pico"
+    std::string project; // "pico_nrf24" (Pico SDK) or "zephyr_nrf24"
+    std::string board;   // the SDK's board name: "pico", "nrf52840dk/nrf52840"
+    std::string pinctrl; // Zephyr: how pins are routed, "nrf", "stm32" or "esp32"
+    std::string spi_node; // Zephyr: the SPI bus node label; "" = the SPI controller's name
+    std::string spi_pinmux; // ESP32: the pinmux prefix of that bus, e.g. "SPIM3"
+    std::string output;  // file to flash: "uf2", "hex" or "bin"
+    std::string flash;   // "drive" (copy onto the board's USB drive) or "esptool"
+    std::string esp_chip;      // esptool: "esp32", "esp32s3", "esp32c3"
+    std::string flash_address; // esptool: where the image goes, "0x1000"
 };
 
 struct McuProfile {

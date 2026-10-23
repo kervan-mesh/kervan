@@ -185,10 +185,10 @@ TEST(Live, Errors)
 
     // failing while it runs: the session ends in "error" with the message
     Scenario late = parse_scenario(R"({"duration_s": 30, "nodes": [
-        {"id": 1, "pos": [0, 0], "device": "arduino-nrf24l01p", "stack": "nrf24-esb",
+        {"id": 1, "pos": [0, 0], "device": "pico-nrf24l01p", "stack": "nrf24-esb",
          "config": {"send_to": "0xE7E7E7E702", "send_every_ms": 1000},
          "payload": {"hex": ")" + std::string(80, 'a') + R"("}},
-        {"id": 2, "pos": [3, 0], "device": "arduino-nrf24l01p", "stack": "nrf24-esb"}]})");
+        {"id": 2, "pos": [3, 0], "device": "pico-nrf24l01p", "stack": "nrf24-esb"}]})");
     LiveSession live(late, kStacks, fast());
     LiveSession::Snapshot last;
     drain(live, last);
